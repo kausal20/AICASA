@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-page text-ink font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  :focus-visible {
+    outline: 2px solid #236B9A;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection { background: #CFE5DE; color: #17211D; }
+  h1, h2, h3 { letter-spacing: -0.011em; }
+}
+
+@layer components {
+  .tabular { font-variant-numeric: tabular-nums; }
+  .input-base {
+    @apply block w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint
+      transition-colors duration-150 hover:border-line-strong focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20
+      disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-soft;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

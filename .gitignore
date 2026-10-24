@@ -8,3 +8,5 @@ dist
 supabase/.temp
 supabase/.branches
 coverage
+
+.vercel

@@ -1,8 +1,9 @@
 import { supabase } from '@/lib/supabase';
 import { unwrap } from '@/lib/errors';
+import { workWindow } from '@/lib/workQueue';
 import type {
   AppEvent, Application, ApplicationRow, ApplicationType, AvailableTransition, DirectoryEntry, DocumentRequirement,
-  Observation, StageHistory, WorkflowStage, WorkflowTransition,
+  Observation, StageHistory, StageReview, WorkflowStage, WorkflowTransition,
 } from '@/types/domain';
 
 export interface ApplicationFilters {
@@ -15,6 +16,7 @@ export interface ApplicationFilters {
   assignedTo?: string;
   unassigned?: boolean;
   overdueOnly?: boolean;
+  evcThisWeek?: boolean;
   /** open = in process (not draft/completed/closed); closed = completed or closed; action = with the institution */
   group?: 'open' | 'closed' | 'action';
   ageMin?: number;
@@ -36,6 +38,12 @@ export const PAGE_SIZE = 15;
 
 export async function listApplications(f: ApplicationFilters, page = 0) {
   let q = supabase.from('v_applications').select('*', { count: 'exact' });
+  if (f.evcThisWeek) {
+    const time = workWindow();
+    const visits = unwrap(await supabase.from('v_evc_queue').select('application_id').in('status', ['scheduled', 'completed']).gte('scheduled_start', time.weekStart).lt('scheduled_start', time.weekEnd)) as { application_id: string }[];
+    if (!visits.length) return { rows: [], total: 0 };
+    q = q.in('id', [...new Set(visits.map((v) => v.application_id))]);
+  }
   if (f.search?.trim()) {
     const s = f.search.trim().replace(/[%,()]/g, ' ');
     q = q.or(`reference.ilike.%${s}%,title.ilike.%${s}%,institution_name.ilike.%${s}%`);
@@ -80,11 +88,18 @@ export async function getRequirements(typeCode: string, checklistVersion: number
 }
 
 export async function getRoute(versionId: string) {
-  const [stages, transitions] = await Promise.all([
+  const [stages, transitions, reviews] = await Promise.all([
     supabase.from('workflow_stages').select('*').eq('version_id', versionId).order('sequence'),
     supabase.from('workflow_transitions').select('*').eq('version_id', versionId).order('sort_order'),
+    supabase.from('workflow_stage_reviews').select('stage_code, code, name, required_capability, description, sort_order').eq('version_id', versionId).order('sort_order'),
   ]);
-  return { stages: unwrap(stages) as WorkflowStage[], transitions: unwrap(transitions) as WorkflowTransition[] };
+  const configured = unwrap(reviews) as (StageReview & { stage_code: string })[];
+  const rows = (unwrap(stages) as WorkflowStage[]).map((s) => ({
+    ...s,
+    reviews: configured.filter((r) => r.stage_code === s.code)
+      .map((r) => ({ code: r.code, name: r.name, required_capability: r.required_capability, description: r.description, sort_order: r.sort_order })),
+  }));
+  return { stages: rows, transitions: unwrap(transitions) as WorkflowTransition[] };
 }
 
 export async function getActiveRouteForType(definitionId: string) {

@@ -9,6 +9,8 @@ import { Bell, CheckCheck, ChevronDown, ChevronRight, FlaskConical, LogOut, Menu
 import { useAuth } from '@/features/auth/AuthProvider';
 import { NAV, ROLE_LABEL, findNav, titleFor, type NavGroup } from './nav';
 import { Wordmark } from './Wordmark';
+import { DisplayPreferences } from './DisplayPreferences';
+import { Glossary } from '@/features/help/Glossary';
 import { cn } from '@/lib/cn';
 import { listNotifications, markRead } from '@/services/operations';
 import { useNavCounts } from '@/hooks/useNavCounts';
@@ -66,7 +68,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                     <li key={i.to}>
                       <NavLink to={i.to} end={i.end ?? i.to === '/app/applications'} onClick={onNavigate}
                         className={({ isActive }) => cn(
-                          'relative flex items-center gap-2.5 rounded-lg px-3 py-[7px] text-[13.5px] font-medium transition-colors duration-150',
+                          'nav-item relative flex items-center gap-2.5 rounded-lg px-3 py-[7px] text-sm font-medium transition-colors duration-200',
                           isActive ? 'bg-primary-soft text-primary-ink' : 'text-ink-soft hover:bg-surface-muted hover:text-ink',
                         )}>
                         {({ isActive }) => (
@@ -248,7 +250,7 @@ function GlobalSearch() {
   return (
     <form onSubmit={submit} role="search" className="relative hidden w-full min-w-[240px] max-w-md md:block">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" aria-hidden />
-      <input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search cases by reference, title or institution"
+      <input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search applications by reference, title or institution"
         aria-label="Search applications" className="h-9 w-full rounded-xl border border-transparent bg-surface-muted pl-9 pr-10 text-[13px] text-ink placeholder:text-ink-faint transition-colors hover:border-line focus:border-accent focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent/20" />
       <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1.5 text-[11px] font-medium text-ink-faint" aria-hidden>/</kbd>
     </form>
@@ -261,12 +263,12 @@ function Breadcrumb() {
   const found = findNav(loc.pathname, workspace);
   const isCase = /^\/app\/applications\/[0-9a-f-]{36}/.test(loc.pathname);
   return (
-    <nav aria-label="Breadcrumb" className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px]">
-      <span className="hidden text-ink-faint sm:inline">{workspace ? ROLE_LABEL[workspace] : ''}</span>
+    <nav aria-label="Breadcrumb" className="flex min-w-0 shrink items-center gap-1.5 whitespace-nowrap text-[13px]">
+      <span className="hidden truncate text-ink-faint xl:inline">{workspace ? ROLE_LABEL[workspace] : ''}</span>
       {found && <><ChevronRight className="hidden h-3.5 w-3.5 text-ink-faint xl:inline" aria-hidden /><span className="hidden whitespace-nowrap text-ink-soft xl:inline">{found.group.label}</span></>}
-      <ChevronRight className="hidden h-3.5 w-3.5 text-ink-faint sm:inline" aria-hidden />
+      <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 text-ink-faint xl:inline" aria-hidden />
       {isCase ? (
-        <><Link to="/app/applications" className="text-ink-soft hover:text-ink hover:underline">Applications</Link><ChevronRight className="h-3.5 w-3.5 text-ink-faint" aria-hidden /><span className="font-medium text-ink">Case</span></>
+        <><Link to="/app/applications" className="text-ink-soft hover:text-ink hover:underline">Applications</Link><ChevronRight className="h-3.5 w-3.5 text-ink-faint" aria-hidden /><span className="font-medium text-ink">Details</span></>
       ) : <span className="truncate font-medium text-ink">{found?.item.label ?? 'AICASA'}</span>}
     </nav>
   );
@@ -291,7 +293,7 @@ export function AppShell() {
             {drawer && (
               <RD.Portal forceMount>
                 <RD.Overlay asChild forceMount>
-                  <motion.div className="fixed inset-0 z-40 bg-[#17211D]/35 lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} />
+                  <motion.div className="fixed inset-0 z-40 bg-[#0F172A]/35 lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} />
                 </RD.Overlay>
                 <RD.Content asChild forceMount>
                   <motion.div className="fixed inset-y-0 left-0 z-50 w-[288px] max-w-[85vw] bg-surface shadow-pop lg:hidden"
@@ -312,7 +314,7 @@ export function AppShell() {
             <div className="flex h-[60px] items-center gap-3 px-4 sm:px-6">
               <button className="rounded-lg p-2 text-ink-soft hover:bg-surface-muted lg:hidden" onClick={() => setDrawer(true)} aria-label="Open navigation"><Menu className="h-5 w-5" /></button>
               <Breadcrumb />
-              <div className="ml-auto flex flex-1 items-center justify-end gap-1.5 sm:gap-2">
+              <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:gap-2">
                 <GlobalSearch />
                 <TT.Root>
                   <TT.Trigger asChild>
@@ -326,12 +328,14 @@ export function AppShell() {
                     </TT.Content>
                   </TT.Portal>
                 </TT.Root>
+                <Glossary />
+                <DisplayPreferences />
                 <NotificationsMenu />
                 <UserMenu />
               </div>
             </div>
           </header>
-          <main id="main" className="mx-auto w-full max-w-[1360px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <main id="main" className="workspace-content mx-auto w-full max-w-[1520px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div key={loc.pathname} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }}>
                 <Outlet />

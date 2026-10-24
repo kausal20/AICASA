@@ -191,3 +191,48 @@ scanned PDFs; reports export up to 5,000 rows client-side from RLS-filtered view
 larger sets is not implemented); login rate limiting relies on Supabase Auth defaults; Supabase advisor
 "SECURITY DEFINER function executable by authenticated" warnings are intentional — those functions *are* the
 API and enforce their own checks; enabling leaked-password protection is a project setting left to the owner.
+
+## Statutory-terminology upgrade (Oct 2026)
+
+- Wording follows the statutory vocabulary: EoA Dossiers, Regional Office (RO) Scrutiny Portal, Apex Bureau Monitoring Console, Institution Statutory Profile; status labels such as "Awaiting RO Scrutiny", "Deficiencies Flagged". "EoA Issued" appears only for an Extension of Approval dossier with a recorded approving decision.
+- The earlier settings-based handbook check is replaced by the server-side **Deficiency Matrix** described below.
+- **Correction cycle** (institution view): split-screen memo / amendment upload with a live countdown to the deadline recorded on the memo.
+- **Immutability Event Stream** (admin dashboard): live tail of the append-only `audit_logs`; hashes shown are the stored SHA-256 of the document.
+
+## Differentiation upgrade (migration `20261025000100_differentiation.sql`)
+
+**Deficiency Matrix.** `deficiency_matrix(application_id)` evaluates, on the server and within the caller's RLS scope:
+required form fields and their types, checklist documents, duplicate files (same SHA-256 among current versions), the latest
+pre-check of each current version, and the active rules in `compliance_rules` that apply to the application type.
+Results are `passed`, `potential_issue`, `failed_validation`, `extraction_failed`, `not_checked` or `manual_review`, each with the
+input value, requirement, rule reference, source and explanation. A rule kind the engine does not support is reported as
+`manual_review`; a figure the institution did not declare is `not_checked`. Numeric rules are evaluated only when the rule states
+where it applies and its source. **The shipped numeric rules are synthetic demonstration values, not AICTE thresholds**, and are
+labelled so in the UI. The matrix never changes a case and never rejects one. National administrators with `workflow_config`
+publish or retire rules (versioned, audited) from *Alert rules → Deficiency Matrix rules*.
+
+**Concurrent review tasks.** A route version may configure independent reviews on a scrutiny or committee stage
+(`workflow_stage_reviews`, carried through `publish_workflow_version`). Entering the stage creates one `review_tasks` row per review,
+assigned to the least-loaded officer holding that responsibility in the region. `start_review_task`, `complete_review_task`
+(completed or returned, with a reason) and `reassign_review_task` (assignment responsibility) lock the case row and then the task,
+check responsibility, region, assignee and `row_version`, and write append-only `review_task_history`, case events and audit rows.
+The prerequisite `review_tasks_complete` blocks routing until every review of the current stage entry is completed. Only the demo
+route `ROUTE_PARALLEL_SCRUTINY` (type `CHANGE_SITE`) uses it; the other routes are unchanged.
+
+**EVC assignment checks.** `evc_assignment_check` explains, per panel member, why an assignment is eligible, blocked or needs manual
+review: authorisation, declared conflicts of interest (`evc_conflict_declarations`), overlapping EVCs, recorded unavailability and
+availability windows (`evc_availability`), and a workload guide from `system_settings.evc.assignment_policy` (demo policy).
+`schedule_evc` enforces the same checks: declared conflicts (when the policy blocks them) and missing authorisation cannot be overridden;
+overlaps and recorded unavailability need an override reason, stored in `evc_history` and the audit log. No external calendar, expert
+registry or affiliation register is connected, so undeclared relationships cannot be detected.
+
+**Version-controlled corrections.** Each memo records the document version on file when it was raised
+(`deficiencies.affected_document_version_id`). A response to a memo about a document must attach a newer version of that document;
+earlier versions stay preserved. `compare_document_versions` shows metadata changes and, only when both versions were read by the
+pre-check with `extraction_status = succeeded`, the extracted fields side by side; otherwise it says why no content comparison is made.
+An officer review resolves the memo; *still deficient* and *needs clarification* keep it open. A deadline left empty uses
+`system_settings.deficiency.correction_period` (demo: 7 days); with no setting the server asks for a date.
+
+**Existing projects.** After applying the migration, add the demo configuration from the end of `supabase/seed.sql`
+(route E, `CHANGE_SITE`, `compliance_rules`, the two settings), then create the concurrent-review demo case with
+`node scripts/demo-parallel-case.mjs` (signs in as the synthetic Sahyadri representative; no service-role key needed).

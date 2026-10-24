@@ -180,7 +180,7 @@ export function NewApplicationPage() {
                 {type.form_schema.map((f) => (
                   f.type === 'boolean' ? (
                     <label key={f.key} className="flex items-start gap-3 rounded-lg border border-line p-3 md:col-span-2">
-                      <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#176B5B]" checked={!!form[f.key]} onChange={(e) => { setForm({ ...form, [f.key]: e.target.checked }); setDirty(true); }} />
+                      <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1e3a8a]" checked={!!form[f.key]} onChange={(e) => { setForm({ ...form, [f.key]: e.target.checked }); setDirty(true); }} />
                       <span><span className="block text-[13px] font-medium">{f.label}</span>{f.help && <span className="block text-xs text-ink-soft">{f.help}</span>}</span>
                     </label>
                   ) : (

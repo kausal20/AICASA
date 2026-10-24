@@ -1,8 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { unwrap } from '@/lib/errors';
 import type {
-  AnalyticsSummary, ComplianceSubmission, ComplianceVerification, Deficiency, EscalationRow, EvcHistory, EvcRow,
-  NotificationRow, ObligationRow, TaskRow, ValidityRow,
+  AnalyticsSummary, ComplianceSubmission, ComplianceVerification, Deficiency, EscalationRow, EvcAssignmentCheck, EvcAvailability,
+  EvcConflictDeclaration, EvcHistory, EvcRow, MatrixRow, NotificationRow, ObligationRow, ReviewTask, TaskRow, ValidityRow, VersionComparison,
 } from '@/types/domain';
 
 // ---- Deficiencies ---------------------------------------------------------
@@ -20,11 +20,16 @@ export async function listDeficiencies(opts: { applicationId?: string; openOnly?
   return rows;
 }
 
-export async function raiseDeficiency(input: { applicationId: string; title: string; reason: string; source: string; correction: string; docType?: string; dueAt: string }) {
+/** dueAt null = the server applies the configured default correction period (or refuses if none is configured). */
+export async function raiseDeficiency(input: { applicationId: string; title: string; reason: string; source: string; correction: string; docType?: string; dueAt: string | null }) {
   return unwrap(await supabase.rpc('raise_deficiency', {
     p_application_id: input.applicationId, p_title: input.title, p_reason: input.reason, p_requirement_source: input.source,
     p_requested_correction: input.correction, p_doc_type: input.docType ?? null, p_due_at: input.dueAt,
   }));
+}
+
+export async function changeDeficiencyDeadline(deficiencyId: string, newDueAt: string, reason: string, version: number) {
+  return unwrap(await supabase.rpc('change_deficiency_deadline', { p_deficiency_id: deficiencyId, p_new_due: newDueAt, p_reason: reason, p_expected_version: version }));
 }
 
 export async function returnForCorrection(applicationId: string, version: number, reason: string) {
@@ -57,11 +62,74 @@ export async function getEvcParticipants(evcId: string) {
   return unwrap(await supabase.from('evc_participants').select('*').eq('evc_id', evcId)) as { user_id: string; participant_role: string }[];
 }
 
-export async function scheduleEvc(input: { evcId: string; start: string; end: string; participants: string[]; confirm: boolean; notes?: string; version: number; reason?: string }) {
+export async function scheduleEvc(input: { evcId: string; start: string; end: string; participants: string[]; confirm: boolean; notes?: string; version: number; reason?: string; override?: string }) {
   return unwrap(await supabase.rpc('schedule_evc', {
     p_evc_id: input.evcId, p_start: input.start, p_end: input.end, p_participant_ids: input.participants, p_confirm: input.confirm,
-    p_notes: input.notes ?? null, p_expected_version: input.version, p_reason: input.reason ?? null,
-  })) as { evc: EvcRow; conflicts: { evc_id: string; reference: string; start: string; end: string }[] };
+    p_notes: input.notes ?? null, p_expected_version: input.version, p_reason: input.reason ?? null, p_override_reason: input.override ?? null,
+  })) as { evc: EvcRow; conflicts: { evc_id: string; reference: string; start: string; end: string }[]; checks: EvcAssignmentCheck; override: boolean };
+}
+
+export async function evcAssignmentCheck(evcId: string, start: string, end: string, participants: string[]) {
+  return unwrap(await supabase.rpc('evc_assignment_check', { p_evc_id: evcId, p_start: start, p_end: end, p_participant_ids: participants })) as EvcAssignmentCheck;
+}
+
+export async function listEvcAvailability() {
+  return unwrap(await supabase.from('evc_availability').select('*').is('withdrawn_at', null).gt('ends_at', new Date().toISOString())
+    .order('starts_at')) as EvcAvailability[];
+}
+
+export async function recordEvcAvailability(input: { userId: string; start: string; end: string; kind: 'available' | 'unavailable'; note: string }) {
+  return unwrap(await supabase.rpc('record_evc_availability', { p_user_id: input.userId, p_start: input.start, p_end: input.end, p_kind: input.kind, p_note: input.note }));
+}
+
+export async function withdrawEvcAvailability(id: string, reason: string) {
+  return unwrap(await supabase.rpc('withdraw_evc_availability', { p_id: id, p_reason: reason }));
+}
+
+export async function listEvcConflicts() {
+  return unwrap(await supabase.from('evc_conflict_declarations').select('*, institutions(name)').is('withdrawn_at', null)
+    .order('declared_at', { ascending: false })) as EvcConflictDeclaration[];
+}
+
+export async function declareEvcConflict(userId: string, institutionId: string, nature: string) {
+  return unwrap(await supabase.rpc('declare_evc_conflict', { p_user_id: userId, p_institution_id: institutionId, p_nature: nature }));
+}
+
+export async function withdrawEvcConflict(id: string, reason: string) {
+  return unwrap(await supabase.rpc('withdraw_evc_conflict', { p_id: id, p_reason: reason }));
+}
+
+// ---- Deficiency Matrix and version comparison ------------------------------
+export async function getDeficiencyMatrix(applicationId: string) {
+  return unwrap(await supabase.rpc('deficiency_matrix', { p_application_id: applicationId })) as MatrixRow[];
+}
+
+export async function compareVersions(oldVersionId: string, newVersionId: string) {
+  return unwrap(await supabase.rpc('compare_document_versions', { p_old_version_id: oldVersionId, p_new_version_id: newVersionId })) as VersionComparison;
+}
+
+// ---- Concurrent review tasks ------------------------------------------------
+export async function listReviewTasks(opts: { applicationId?: string; assignee?: string; openOnly?: boolean } = {}) {
+  let q = supabase.from('review_tasks').select('*, applications(reference, title), review_task_history(*)').neq('status', 'cancelled')
+    .order('created_at', { ascending: false });
+  if (opts.applicationId) q = q.eq('application_id', opts.applicationId);
+  if (opts.assignee) q = q.eq('assignee_id', opts.assignee);
+  if (opts.openOnly) q = q.in('status', ['pending', 'in_review', 'returned']);
+  const rows = unwrap(await q) as ReviewTask[];
+  for (const r of rows) r.review_task_history?.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return rows;
+}
+
+export async function startReviewTask(id: string, version: number) {
+  return unwrap(await supabase.rpc('start_review_task', { p_task_id: id, p_expected_version: version })) as ReviewTask;
+}
+
+export async function completeReviewTask(id: string, version: number, outcome: 'completed' | 'returned', note: string) {
+  return unwrap(await supabase.rpc('complete_review_task', { p_task_id: id, p_expected_version: version, p_outcome: outcome, p_note: note })) as ReviewTask;
+}
+
+export async function reassignReviewTask(id: string, officerId: string, reason: string, version: number) {
+  return unwrap(await supabase.rpc('reassign_review_task', { p_task_id: id, p_officer_id: officerId, p_reason: reason, p_expected_version: version })) as ReviewTask;
 }
 
 export async function cancelEvc(evcId: string, reason: string, version: number) {

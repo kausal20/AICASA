@@ -4,11 +4,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: { DEFAULT: '#176B5B', hover: '#125548', soft: '#E6F1EE', ink: '#0F4A3F' },
-        page: '#F6F8F5',
-        surface: { DEFAULT: '#FFFFFF', muted: '#F0F3F0', sunken: '#EAEFEB' },
-        line: { DEFAULT: '#DDE4DF', strong: '#C5D0C9' },
-        ink: { DEFAULT: '#17211D', soft: '#5D6963', faint: '#6E7A74' },
+        primary: { DEFAULT: '#1e3a8a', hover: '#172e6e', soft: '#E8EDF8', ink: '#172554' },
+        page: '#F3F5F9',
+        surface: { DEFAULT: '#FFFFFF', muted: '#EEF1F6', sunken: '#E6EAF2' },
+        line: { DEFAULT: '#D9DFE8', strong: '#C4CCDA' },
+        ink: { DEFAULT: '#0F172A', soft: '#475569', faint: '#64748B' },
         accent: { DEFAULT: '#236B9A', soft: '#E7F0F7' },
         success: { DEFAULT: '#168568', soft: '#E5F4EE' },
         warning: { DEFAULT: '#946200', soft: '#FBF1DC' },

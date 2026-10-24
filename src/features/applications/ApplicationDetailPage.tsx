@@ -25,9 +25,11 @@ import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { Disclosure, Panel } from '@/components/ui/Workspace';
 import { DocumentsSection } from '@/features/documents/DocumentsSection';
 import { DeficiencyCard } from '@/features/deficiencies/DeficiencyCard';
+import { DeficiencyMatrix } from '@/features/compliance/DeficiencyMatrix';
+import { ReviewTasksPanel } from './ReviewTasksPanel';
 import { useAction } from '@/hooks/useAction';
 import { cn } from '@/lib/cn';
-import { fmtDate, fmtDateTime, humanize, endOfDayIso } from '@/lib/format';
+import { decisionLabel, fmtDate, fmtDateTime, humanize, endOfDayIso } from '@/lib/format';
 import type { Application, ApplicationRow, AvailableTransition, AppEvent, Deficiency, EvcRow } from '@/types/domain';
 
 const TABS = ['overview', 'timeline', 'documents', 'deficiencies', 'evc', 'details', 'audit'] as const;
@@ -66,6 +68,8 @@ export function ApplicationDetailPage() {
   const openDefs = (defs.data ?? []).filter((d) => !['resolved', 'withdrawn'].includes(d.status));
   const awaitingReview = openDefs.filter((d) => d.status === 'correction_submitted');
   const latestEvc = (evc.data ?? []).filter((e) => e.status !== 'cancelled').at(-1);
+  // institutions see the matrix while they can still act on it (draft or returned); staff always
+  const showMatrix = staff || ['draft', 'returned_for_correction'].includes(a.status);
 
   return (
     <div>
@@ -109,11 +113,14 @@ export function ApplicationDetailPage() {
             ...(staff ? [{ value: 'audit', label: 'Audit' }] : []),
           ]}>
             <TabPanel value="overview">
+              {staff && <ReviewTasksPanel applicationId={a.id} />}
+              {showMatrix && <DeficiencyMatrix applicationId={a.id} audience={staff ? 'staff' : 'institution'} />}
               <OverviewTab a={a} events={events.data} openDefs={openDefs} docs={docs.data?.length ?? 0} missingDocs={(reqs.data ?? []).filter((r) => r.is_required && !(docs.data ?? []).some((d) => d.doc_type === r.doc_type && d.current_version > 0)).map((r) => r.name)}
                 latestEvc={latestEvc} decisions={decisions.data} name={name} onTab={setTab} />
             </TabPanel>
             <TabPanel value="timeline"><Panel><TimelineList events={events.data} loading={events.isLoading} name={name} /></Panel></TabPanel>
             <TabPanel value="documents">
+              {showMatrix && <DeficiencyMatrix applicationId={a.id} audience={staff ? 'staff' : 'institution'} />}
               <Panel title="Documents and versions" description="Every upload is a new version; earlier versions stay on file and remain openable.">
                 <div className="px-5">
                   {docs.isLoading ? <LoadingRows /> : (
@@ -201,7 +208,7 @@ function NextActionCard({ a, isRep, transitions, awaitingReview, openDefs, onTab
         {cta}
         {workspace === 'officer' && !cta && permitted.length > 0 && <p className="text-xs text-ink-soft">Choose one of your permitted actions below.</p>}
         {!yours && !closed && workspace !== 'admin' && <p className="text-xs text-ink-soft">Nothing for you to do on this case right now.</p>}
-        {workspace === 'admin' && !closed && <p className="text-xs text-ink-soft">Administrators oversee cases; scrutiny and decisions stay with officers.</p>}
+        {workspace === 'admin' && !closed && <p className="text-xs text-ink-soft">Administrators oversee applications; scrutiny and decisions stay with officers.</p>}
       </div>
     </motion.section>
   );
@@ -306,7 +313,7 @@ function OverviewTab({ a, events, openDefs, docs, missingDocs, latestEvc, decisi
   return (
     <div className="space-y-4">
       {decisions && decisions.length > 0 && (
-        <Notice tone="success" icon={<Gavel className="h-4 w-4" />} title={`Decision recorded: ${humanize(decisions[0].decision)}`}>
+        <Notice tone="success" icon={<Gavel className="h-4 w-4" />} title={`Decision recorded: ${decisionLabel(decisions[0].decision, a.application_type_code)}`}>
           {decisions[0].reason} — {name(decisions[0].recorded_by)}, {fmtDateTime(decisions[0].created_at)}. Recorded by a competent officer; AICASA never decides.
         </Notice>
       )}
@@ -405,7 +412,7 @@ function EvcRecordCard({ e, name }: { e: EvcRow; name: (id: string | null) => st
         <KeyValue items={[
           { label: 'Queued', value: fmtDateTime(e.ready_at) },
           { label: e.status === 'awaiting_scheduling' ? 'Schedule by' : 'Session', value: e.status === 'awaiting_scheduling' ? <DueBadge due={e.schedule_due_at} /> : e.scheduled_start ? `${fmtDateTime(e.scheduled_start)} – ${fmtDateTime(e.scheduled_end)}` : '—' },
-          { label: 'Outcome', value: e.outcome ? humanize(e.outcome) : '—' },
+          { label: 'Outcome', value: e.outcome === 'satisfactory' ? 'EVC Recommended' : e.outcome ? humanize(e.outcome) : '—' },
           { label: 'Reschedules', value: e.reschedule_count },
         ]} />
         {e.completion_summary && <p className="mt-3 rounded-lg bg-surface-muted px-3 py-2 text-[13px]">{e.completion_summary}</p>}
@@ -435,7 +442,7 @@ function DetailsTab({ a, app, decisions, name }: { a: ApplicationRow; app: Appli
       {!!decisions?.length && (
         <Panel title="Recorded decisions" description="Recorded by a competent officer. AICASA never makes approval decisions.">
           <ul className="space-y-3 px-5 py-4">{decisions.map((d) => (
-            <li key={d.id} className="text-[13px]"><StatusBadge status={d.decision === 'not_approved' ? 'still_deficient' : 'completed'} label={humanize(d.decision)} />
+            <li key={d.id} className="text-[13px]"><StatusBadge status={d.decision === 'not_approved' ? 'still_deficient' : 'completed'} label={decisionLabel(d.decision, a.application_type_code)} />
               <span className="ml-2 text-ink-soft">{name(d.recorded_by)} · {fmtDateTime(d.created_at)}</span><p className="mt-1">{d.reason}</p></li>
           ))}</ul>
         </Panel>
@@ -486,9 +493,9 @@ function TransitionDialog({ a, t, onClose }: { a: ApplicationRow; t: AvailableTr
             <Notice tone="info" icon={<Gavel className="h-4 w-4" />}>You are recording the decision of the competent authority. It is stored with your name and time and cannot be edited.</Notice>
             <SelectField label="Decision" required value={decision} onChange={(e) => setDecision(e.target.value)}>
               <option value="">Select…</option>
-              <option value="approved">Approved</option>
-              <option value="approved_with_conditions">Approved with conditions</option>
-              <option value="not_approved">Not approved</option>
+              <option value="approved">{decisionLabel("approved", a.application_type_code)}</option>
+              <option value="approved_with_conditions">{decisionLabel("approved_with_conditions", a.application_type_code)}</option>
+              <option value="not_approved">{decisionLabel("not_approved")}</option>
               <option value="deferred">Deferred</option>
             </SelectField>
           </>
@@ -505,11 +512,16 @@ function RaiseDeficiencyDialog({ a, onClose }: { a: ApplicationRow; onClose: () 
   const reqs = useQuery({ queryKey: ['requirements-for', a.application_type_code], queryFn: async () => {
     const raw = await getApplication(a.id); return raw ? getRequirements(raw.application_type_code, raw.checklist_version) : [];
   } });
+  const { context } = useAuth();
+  const period = context?.settings?.['deficiency.correction_period'] as { days?: number; source_reference?: string } | undefined;
+  const defaultDays = typeof period?.days === 'number' && period.days >= 1 ? period.days : null;
   const [f, setF] = useState({ title: '', reason: '', source: '', correction: '', docType: '', due: '' });
+  const [useDefault, setUseDefault] = useState(defaultDays !== null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
-  const act = useAction(() => raiseDeficiency({ applicationId: a.id, title: f.title, reason: f.reason, source: f.source, correction: f.correction, docType: f.docType || undefined, dueAt: endOfDayIso(f.due) }),
-    { success: 'Deficiency recorded. Return the case to notify the institution.', invalidate: [['deficiencies'], ['application']], onSuccess: onClose });
-  const valid = f.title.trim().length >= 5 && f.reason.trim().length >= 10 && f.source.trim().length >= 3 && f.correction.trim().length >= 10 && f.due;
+  const act = useAction(() => raiseDeficiency({ applicationId: a.id, title: f.title, reason: f.reason, source: f.source, correction: f.correction, docType: f.docType || undefined,
+    dueAt: useDefault ? null : endOfDayIso(f.due) }),
+    { success: 'Deficiency recorded. Return the case to notify the institution.', invalidate: [['deficiencies'], ['application'], ['matrix']], onSuccess: onClose });
+  const valid = f.title.trim().length >= 5 && f.reason.trim().length >= 10 && f.source.trim().length >= 3 && f.correction.trim().length >= 10 && (useDefault || f.due);
   return (
     <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title="Record deficiency" description={a.reference}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={!valid} onClick={() => act.mutate(undefined)}>Record deficiency</Button></>}>
@@ -522,7 +534,21 @@ function RaiseDeficiencyDialog({ a, onClose }: { a: ApplicationRow; onClose: () 
           {(reqs.data ?? []).map((r) => <option key={r.doc_type} value={r.doc_type}>{r.name}</option>)}
         </SelectField>
         <div className="sm:col-span-2"><TextAreaField label="Correction requested" required value={f.correction} onChange={set('correction')} /></div>
-        <TextField label="Correction due date" type="date" required value={f.due} onChange={set('due')} min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)} hint="Interpreted as end of day, IST." />
+        <fieldset className="sm:col-span-2">
+          <legend className="mb-1.5 text-[13px] font-medium">Correction deadline <span className="text-danger">*</span></legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={cn('flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[13px]', defaultDays === null && 'opacity-60')}>
+              <input type="radio" name="due-mode" className="mt-0.5 accent-[#1e3a8a]" disabled={defaultDays === null} checked={useDefault} onChange={() => setUseDefault(true)} />
+              <span>{defaultDays === null ? 'No default correction period is configured' : <>Configured default: {defaultDays} days<span className="block text-xs text-ink-soft">{period?.source_reference ?? 'Set by an administrator'}</span></>}</span>
+            </label>
+            <label className="flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[13px]">
+              <input type="radio" name="due-mode" className="mt-0.5 accent-[#1e3a8a]" checked={!useDefault} onChange={() => setUseDefault(false)} />
+              <span className="min-w-0 flex-1">Choose a date
+                {!useDefault && <TextField label="Due date" type="date" required value={f.due} onChange={set('due')} min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)} hint="End of day, IST." />}
+              </span>
+            </label>
+          </div>
+        </fieldset>
       </div>
     </Dialog>
   );

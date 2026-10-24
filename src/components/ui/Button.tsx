@@ -18,7 +18,7 @@ const variants: Record<Variant, string> = {
   danger: 'bg-danger text-white hover:bg-[#931c13]',
   link: 'text-accent hover:underline underline-offset-2 px-0 h-auto',
 };
-const sizes: Record<Size, string> = { sm: 'h-8 px-3 text-[13px]', md: 'h-10 px-4 text-sm' };
+const sizes: Record<Size, string> = { sm: 'min-h-9 px-3 text-sm', md: 'min-h-11 px-4 text-sm' };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;

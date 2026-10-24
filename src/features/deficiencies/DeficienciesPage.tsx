@@ -26,7 +26,7 @@ export function DeficienciesPage() {
   return (
     <div>
       <PageHeader title={staff ? 'Correction reviews' : 'Deficiencies and corrections'}
-        description={staff ? 'Corrections submitted by institutions for cases in your scope. Review each one and record the outcome with a reason.'
+        description={staff ? 'Corrections submitted by institutions for applications in your scope. Review each one and record the outcome with a reason.'
           : 'Deficiencies recorded by AICTE officers on your applications, with what is requested and by when.'} />
       <Tabs value={tab} onValueChange={setTab} tabs={tabs}>
         {q.isLoading ? <Card><LoadingRows /></Card> : q.error ? <Card><ErrorState error={q.error} onRetry={() => q.refetch()} /></Card> : !list.length ? (

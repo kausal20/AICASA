@@ -3,7 +3,7 @@ import { cn } from '@/lib/cn';
 export function Mark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={cn('h-7 w-7', className)} aria-hidden>
-      <rect width="32" height="32" rx="7" fill="#176B5B" />
+      <rect width="32" height="32" rx="7" fill="#1e3a8a" />
       <path d="M9 22 16 9l7 13" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M12 18h8" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
     </svg>

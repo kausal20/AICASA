@@ -3,7 +3,17 @@
 @tailwind utilities;
 
 @layer base {
-  html { -webkit-text-size-adjust: 100%; }
+  html { -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; scroll-behavior: smooth; }
+  :root { --scroll-thumb: #94a3b8; --scroll-track: #eef1f6; --scroll-hover: #64748b; --scroll-active: #475569; --row-padding: 1rem; }
+  [data-density="compact"] { --row-padding: 0.625rem; }
+  * { scrollbar-color: var(--scroll-thumb) var(--scroll-track); scrollbar-width: thin; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--scroll-track); }
+  ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border: 2px solid var(--scroll-track); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); }
+  ::-webkit-scrollbar-thumb:active { background: var(--scroll-active); }
+  button:not(:disabled), summary, a { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
   body {
     @apply bg-page text-ink font-sans antialiased;
     font-feature-settings: 'cv11', 'ss01';
@@ -13,9 +23,22 @@
     outline-offset: 2px;
     border-radius: 6px;
   }
-  ::selection { background: #CFE5DE; color: #17211D; }
+  ::selection { background: #D6E0F5; color: #0F172A; }
   h1, h2, h3 { letter-spacing: -0.011em; }
 }
+
+.workspace-content { font-size: 15px; line-height: 1.6; }
+.workspace-content .text-xs { font-size: 0.8125rem; line-height: 1.5; }
+.workspace-content .text-\[11px\] { font-size: 0.75rem; line-height: 1.5; }
+.workspace-content .text-\[13px\] { font-size: 0.875rem; line-height: 1.55; }
+.application-table td, .work-item { padding-top: var(--row-padding); padding-bottom: var(--row-padding); }
+.nav-item { min-height: 44px; }
+[data-density="compact"] .nav-item { min-height: 38px; }
+.workspace-panel { animation: panel-arrive 320ms cubic-bezier(.2,.8,.2,1) both; }
+.workspace-panel:nth-child(2) { animation-delay: 35ms; }
+.workspace-panel:nth-child(3) { animation-delay: 70ms; }
+@keyframes panel-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (forced-colors: active) { * { scrollbar-color: auto; } }
 
 @layer components {
   .tabular { font-variant-numeric: tabular-nums; }

@@ -111,6 +111,27 @@ begin
     (v_ver, 'evc_to_decision_auto', 'EVC satisfactory — forward for decision', 'evc', 'decision', null, null, false, true, array['evc_completed', 'evc_satisfactory', 'no_open_deficiencies'], false, 1),
     (v_ver, 'evc_to_decision', 'Forward for decision after EVC review', 'evc', 'decision', 'officer', 'evc', true, false, array['evc_completed', 'no_open_deficiencies'], false, 2),
     (v_ver, 'record_decision', 'Record decision', 'decision', 'closed', 'officer', 'decision', true, false, array['no_open_deficiencies'], true, 1);
+
+  -- Route E: Scrutiny with two concurrent reviews. Only this demo route is configured for parallel review;
+  -- the other routes keep a single scrutiny officer.
+  insert into workflow_definitions (code, name, description)
+  values ('ROUTE_PARALLEL_SCRUTINY', 'Scrutiny with concurrent reviews', 'Two independent reviews run in parallel during scrutiny; routing waits for both.') returning id into v_def;
+  insert into workflow_definition_versions (definition_id, version, source_reference, change_summary)
+  values (v_def, 1, v_src, 'Initial demo route with concurrent reviews') returning id into v_ver;
+  insert into workflow_stages (version_id, code, name, kind, sequence, sla_days, responsible_capability) values
+    (v_ver, 'intake', 'Intake', 'intake', 1, null, null),
+    (v_ver, 'scrutiny', 'Scrutiny', 'scrutiny', 2, 21, 'scrutiny'),
+    (v_ver, 'decision', 'Decision', 'decision', 3, 10, 'decision'),
+    (v_ver, 'closed', 'Closed', 'terminal', 4, null, null);
+  insert into workflow_stage_reviews (version_id, stage_code, code, name, required_capability, description, sort_order) values
+    (v_ver, 'scrutiny', 'land_building', 'Land and building documents review', 'scrutiny', 'Lease/ownership deed and building plan for the new site.', 1),
+    (v_ver, 'scrutiny', 'safety_compliance', 'Safety and compliance record review', 'compliance', 'Fire safety certificate and the institution''s open compliance obligations.', 2);
+  insert into workflow_transitions (version_id, code, name, from_stage, to_stage, allowed_role, required_capability,
+                                    requires_reason, is_automatic, prerequisites, records_decision, sort_order) values
+    (v_ver, 'intake_to_scrutiny', 'Begin scrutiny', 'intake', 'scrutiny', null, null, false, true, array['required_documents'], false, 1),
+    (v_ver, 'scrutiny_to_decision', 'Forward for decision', 'scrutiny', 'decision', 'officer', 'scrutiny', false, false, array['no_open_deficiencies', 'review_tasks_complete'], false, 1),
+    (v_ver, 'record_decision', 'Record decision', 'decision', 'closed', 'officer', 'decision', true, false, array['no_open_deficiencies'], true, 1),
+    (v_ver, 'refer_back_to_scrutiny', 'Refer back to scrutiny', 'decision', 'scrutiny', 'officer', 'decision', true, false, '{}', false, 2);
 end $$;
 
 insert into public.application_types (code, name, description, workflow_definition_id, form_schema) values
@@ -130,7 +151,12 @@ insert into public.application_types (code, name, description, workflow_definiti
   ('RESTORE_INTAKE', 'Restoration of intake', 'Restoration of a previously reduced intake (demo type).',
    (select id from workflow_definitions where code = 'ROUTE_EVC_ONLY'),
    '[{"key":"programme","label":"Programme","type":"text","required":true},
-     {"key":"previous_intake","label":"Intake before reduction","type":"number","required":true}]')
+     {"key":"previous_intake","label":"Intake before reduction","type":"number","required":true}]'),
+  ('CHANGE_SITE', 'Change of site', 'Shifting the institution to a new campus site (demo type, concurrent-review route).',
+   (select id from workflow_definitions where code = 'ROUTE_PARALLEL_SCRUTINY'),
+   '[{"key":"proposed_site_address","label":"Address of the proposed site","type":"text","required":true},
+     {"key":"land_area_acres","label":"Land area of the new site (acres)","type":"number","required":false},
+     {"key":"built_up_area_sqm","label":"Built-up instructional area at the new site (sqm)","type":"number","required":false}]')
 on conflict (code) do nothing;
 
 insert into public.document_requirements (application_type_code, checklist_version, doc_type, name, description, is_required,
@@ -156,7 +182,13 @@ insert into public.document_requirements (application_type_code, checklist_versi
   ('RESTORE_INTAKE', 1, 'affidavit', 'Affidavit', 'Notarised affidavit for restoration.', true,
      array['application/pdf'], 5242880, false, array['institution_name', 'academic_year', 'notary']),
   ('RESTORE_INTAKE', 1, 'compliance_report', 'Compliance report', 'Report on compliance with earlier observations.', true,
-     array['application/pdf', 'text/plain'], 5242880, false, array['institution_name', 'date'])
+     array['application/pdf', 'text/plain'], 5242880, false, array['institution_name', 'date']),
+  ('CHANGE_SITE', 1, 'land_lease_deed', 'Land lease/ownership deed (new site)', 'Registered lease or ownership document for the new site.', true,
+     array['application/pdf'], 10485760, true, array['institution_name', 'issue_date', 'expiry_date']),
+  ('CHANGE_SITE', 1, 'building_plan_approval', 'Building plan approval (new site)', 'Approved building plan for the new site.', true,
+     array['application/pdf', 'image/png', 'image/jpeg'], 10485760, false, array['institution_name', 'date']),
+  ('CHANGE_SITE', 1, 'fire_safety_certificate', 'Fire safety certificate (new site)', 'Fire safety certificate for the buildings at the new site.', true,
+     array['application/pdf', 'image/png', 'image/jpeg'], 5242880, true, array['institution_name', 'issue_date', 'expiry_date'])
 on conflict do nothing;
 
 insert into public.escalation_rules (code, version, rule_kind, entity_type, offset_hours, recipient, recipient_capability,
@@ -302,6 +334,25 @@ begin
   alter table public.deficiency_submissions enable trigger deficiency_submissions_append_only;
   alter table public.deficiency_reviews enable trigger deficiency_reviews_append_only;
   alter table public.application_decisions enable trigger decisions_append_only;
+end $$;
+
+-- One case on the concurrent-review route. Also callable on its own for databases seeded before the route existed.
+create or replace function app.demo_parallel_case(p_uploads jsonb default '{}'::jsonb) returns uuid
+language plpgsql as $$
+declare a public.applications; v_inst uuid;
+begin
+  select * into a from public.applications where title = 'Change of site — Sahyadri College to the Survey 310 campus';
+  if a.id is not null then return a.id; end if;
+  select id into v_inst from public.institutions where code = 'DEMO-WR-002';
+  perform app.demo_as('inst.sahyadri@aicasa-demo.test');
+  a := public.create_application_draft(v_inst, 'CHANGE_SITE', 'Change of site — Sahyadri College to the Survey 310 campus', '2027-28',
+    '{"proposed_site_address": "Survey 310, Demo Nagar Phase II, Nashik", "land_area_acres": 3.4, "built_up_area_sqm": 4800}');
+  perform app.demo_doc(p_uploads, 'P1_lease', 'DEMO-WR-002', a.id, 'land_lease_deed', 'new_site_lease_deed.pdf');
+  perform app.demo_doc(p_uploads, 'P1_plan', 'DEMO-WR-002', a.id, 'building_plan_approval', 'new_site_building_plan.pdf');
+  perform app.demo_doc(p_uploads, 'P1_fire', 'DEMO-WR-002', a.id, 'fire_safety_certificate', 'new_site_fire_certificate.pdf');
+  select * into a from public.applications where id = a.id;
+  a := public.submit_application(a.id, a.row_version);
+  return a.id;
 end $$;
 
 create or replace function public.seed_demo_cases(p_uploads jsonb default '{}'::jsonb) returns jsonb
@@ -508,6 +559,9 @@ begin
     'Undertaking in affidavit (synthetic)', 'Appointment order and director''s qualification documents',
     'Secretary, Coromandel Trust (demo)', current_date + 12);
 
+  -- Sahyadri: change of site on the concurrent-review route (both reviews pending)
+  perform app.demo_parallel_case(p_uploads);
+
   -- Spread cases in time so ageing, SLA and escalations are visible.
   perform app.demo_shift(n3, 70);
   perform app.demo_shift(n2, 25);
@@ -537,6 +591,8 @@ begin
 end $$;
 
 revoke execute on function public.seed_demo_cases(jsonb) from public, anon, authenticated;
+revoke execute on function app.demo_parallel_case(jsonb) from public, anon, authenticated;
+alter function app.demo_parallel_case(jsonb) set search_path = public, app;
 revoke execute on function app.demo_as(text), app.demo_file(jsonb, text, text, bigint, text),
   app.demo_doc(jsonb, text, text, uuid, text, text, text, text), app.demo_shift(uuid, integer) from public, anon, authenticated;
 grant execute on function public.seed_demo_cases(jsonb), public.provision_demo_access() to service_role;
@@ -544,3 +600,46 @@ alter function app.demo_as(text) set search_path = public, app;
 alter function app.demo_file(jsonb, text, text, bigint, text) set search_path = public, app, storage;
 alter function app.demo_doc(jsonb, text, text, uuid, text, text, text, text) set search_path = public, app;
 alter function app.demo_shift(uuid, integer) set search_path = public, app;
+
+-- Handbook pre-screening configuration (same statements as migration 20261024000100)
+update application_types
+set form_schema = form_schema || '[
+  {"key":"land_area_acres","label":"Land area (acres)","type":"number","required":false,"help":"Declared land area in acres. Used by the handbook pre-screening."}
+]'::jsonb
+where code = 'EOA' and not (form_schema @> '[{"key":"land_area_acres"}]'::jsonb);
+
+update application_types
+set form_schema = form_schema || '[
+  {"key":"built_up_area_sqm","label":"Built-up instructional area (sqm)","type":"number","required":false,"help":"Declared built-up area used for instruction."},
+  {"key":"faculty_count","label":"Number of faculty","type":"number","required":false},
+  {"key":"student_count","label":"Number of students (sanctioned intake in the institution)","type":"number","required":false},
+  {"key":"computer_count","label":"Number of computers for students","type":"number","required":false}
+]'::jsonb
+where code in ('EOA', 'NEW_INST') and not (form_schema @> '[{"key":"built_up_area_sqm"}]'::jsonb);
+
+-- Deficiency Matrix rules. The numeric thresholds are SYNTHETIC: chosen for the demonstration and not taken from
+-- the AICTE Approval Process Handbook. Each rule states where it applies and its source; results are advisory.
+insert into public.compliance_rules (code, version, label, kind, applies_to, params, source_reference, is_synthetic, explanation) values
+  ('land_area_min', 1, 'Declared land area', 'min', array['EOA', 'NEW_INST', 'CHANGE_SITE'],
+   '{"field": "land_area_acres", "threshold": 2.5, "unit": "acres"}',
+   'SYNTHETIC DEMO RULE - illustrative value for the prototype; not taken from the AICTE Approval Process Handbook', true, ''),
+  ('built_up_min', 1, 'Declared built-up instructional area', 'min', array['EOA', 'NEW_INST', 'CHANGE_SITE'],
+   '{"field": "built_up_area_sqm", "threshold": 4200, "unit": "sqm"}',
+   'SYNTHETIC DEMO RULE - illustrative value for the prototype; not taken from the AICTE Approval Process Handbook', true, ''),
+  ('student_faculty_ratio', 1, 'Student-to-faculty ratio (declared figures)', 'ratio_max', array['EOA', 'NEW_INST'],
+   '{"numerator": "student_count", "denominator": "faculty_count", "threshold": 20, "target": "1:20"}',
+   'SYNTHETIC DEMO RULE - illustrative value for the prototype; not taken from the AICTE Approval Process Handbook', true, ''),
+  ('student_computer_ratio', 1, 'Student-to-computer ratio (declared figures)', 'ratio_max', array['EOA', 'NEW_INST'],
+   '{"numerator": "student_count", "denominator": "computer_count", "threshold": 4, "target": "1:4"}',
+   'SYNTHETIC DEMO RULE - illustrative value for the prototype; not taken from the AICTE Approval Process Handbook', true, ''),
+  ('proposed_intake_consistency', 1, 'Proposed intake exceeds approved intake', 'consistency_gt', array['EOA'],
+   '{"field": "proposed_intake", "other": "approved_intake", "when_flag": "intake_increase"}',
+   'Form consistency check (logical comparison of two declared values; no regulatory threshold involved)', false, '')
+on conflict do nothing;
+
+insert into public.system_settings (key, value, description) values
+  ('deficiency.correction_period', '{"days": 7, "source_reference": "DEMO default correction period; not a statutory period"}',
+   'Default correction period used when an officer records a deficiency without choosing a date. Officers can set another date.'),
+  ('evc.assignment_policy', '{"block_declared_conflicts": true, "require_availability_window": false, "max_open_evcs_per_member": 3, "source_reference": "DEMO assignment policy - illustrative, not an AICTE rule"}',
+   'EVC assignment checks: block declared conflicts, whether recorded availability is required, and a workload guide.')
+on conflict (key) do nothing;

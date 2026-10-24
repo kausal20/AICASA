@@ -76,7 +76,10 @@ Deno.serve(async (req) => {
     const { data: blob, error: dlErr } = await admin.storage.from(ver.storage_bucket).download(ver.storage_path);
     if (dlErr || !blob) return await fail('The stored file could not be read. Retry, or ask for manual review.');
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    const sha = ver.sha256 ?? (await sha256Hex(bytes));
+    // The recorded fingerprint comes from the browser. Recompute it from the stored bytes and use the computed value.
+    const computedSha = await sha256Hex(bytes);
+    const fingerprintMismatch = ver.sha256 !== null && ver.sha256 !== computedSha;
+    const sha = computedSha;
 
     const { data: ocr } = await admin.from('integration_settings').select('status').eq('code', 'ocr').maybeSingle();
     const result = await runPrecheck(
@@ -91,6 +94,14 @@ Deno.serve(async (req) => {
       },
     );
 
+    if (fingerprintMismatch) {
+      result.findings.push({
+        check_code: 'fingerprint', check_name: 'Recorded file fingerprint', outcome: 'potential_issue', severity: 'high',
+        explanation: 'The fingerprint recorded at upload does not match the stored file. Duplicate and same-content checks that rely on it may be wrong.',
+        suggestion: 'An officer should treat this upload with caution and re-check it manually.',
+      });
+      result.summary.potential_issue = (result.summary.potential_issue ?? 0) + 1;
+    }
     const { error: doneErr } = await admin.rpc('complete_document_check', {
       p_run_id: run.id, p_engine: result.engine, p_status: result.status, p_extraction_status: result.extraction_status,
       p_extraction_method: result.extraction_method, p_steps: result.steps, p_limitations: result.limitations,

@@ -42,7 +42,7 @@ export function ExpiryPage() {
                 className={`rounded-full px-3 py-1 text-[13px] font-medium ${stateFilter === v ? 'bg-primary text-white' : 'bg-surface-muted text-ink-soft hover:text-ink'}`}>{l}</button>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="accent-[#176B5B]" checked={showSuperseded} onChange={(e) => setShowSuperseded(e.target.checked)} />Show superseded records (renewal history)</label>
+          <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="accent-[#1e3a8a]" checked={showSuperseded} onChange={(e) => setShowSuperseded(e.target.checked)} />Show superseded records (renewal history)</label>
         </div>
         {q.isLoading ? <LoadingRows /> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !rows.length ? (
           <EmptyState title="No validity records" body="Record a document's issue and expiry dates to receive renewal reminders." />

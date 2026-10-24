@@ -28,7 +28,7 @@ export function ProfilePage() {
 
   return (
     <div>
-      <PageHeader title={workspace === 'institution' ? 'Institution profile and settings' : 'My profile'} description="Your role and scope are assigned by an administrator and cannot be changed here." />
+      <PageHeader title={workspace === 'institution' ? 'Institution profile' : 'My profile'} description="Your role and scope are assigned by an administrator and cannot be changed here." />
       <div className="grid gap-6 lg:grid-cols-2">
         {workspace === 'institution' && institution && <InstitutionCard id={institution.id} canEdit={institution.member_role === 'representative'} />}
         <Card>
@@ -102,8 +102,8 @@ function PreferencesCard() {
               return (
                 <tr key={k} className="border-t border-line">
                   <td className="py-2">{humanize(k)}</td>
-                  <td className="py-2 text-center"><input type="checkbox" aria-label={`${humanize(k)} in-app`} className="accent-[#176B5B]" checked={p.in_app} onChange={(e) => save.mutate({ kind: k, inApp: e.target.checked, email: p.email })} /></td>
-                  <td className="py-2 text-center"><input type="checkbox" aria-label={`${humanize(k)} email`} className="accent-[#176B5B]" checked={p.email} onChange={(e) => save.mutate({ kind: k, inApp: p.in_app, email: e.target.checked })} /></td>
+                  <td className="py-2 text-center"><input type="checkbox" aria-label={`${humanize(k)} in-app`} className="accent-[#1e3a8a]" checked={p.in_app} onChange={(e) => save.mutate({ kind: k, inApp: e.target.checked, email: p.email })} /></td>
+                  <td className="py-2 text-center"><input type="checkbox" aria-label={`${humanize(k)} email`} className="accent-[#1e3a8a]" checked={p.email} onChange={(e) => save.mutate({ kind: k, inApp: p.in_app, email: e.target.checked })} /></td>
                 </tr>
               );
             })}

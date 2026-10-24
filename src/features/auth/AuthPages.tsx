@@ -61,7 +61,7 @@ function DemoPicker() {
   };
   const roles = [
     ['institution', 'College / university', 'Submit applications, answer deficiencies, track compliance.'],
-    ['officer', 'AICTE officer', 'Work the queue, scrutinise, record deficiencies, route cases.'],
+    ['officer', 'AICTE officer', 'Work the queue, scrutinise, record deficiencies, route applications.'],
     ['admin', 'Administrator', 'Pendency, escalations, workflow routes, audit and reports.'],
   ];
   return (

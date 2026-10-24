@@ -43,14 +43,14 @@ export const NAV: Record<Role, NavGroup[]> = {
     {
       id: 'work', label: 'Daily work', items: [
         { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
-        { to: '/app/queue', label: 'My queue', icon: Inbox },
+        { to: '/app/queue', label: 'My application queue', icon: Inbox },
         { to: '/app/tasks', label: 'Tasks & deadlines', icon: ListTodo, badge: 'tasksOverdue', badgeTone: 'danger' },
         { to: '/app/deficiencies', label: 'Correction reviews', icon: ShieldAlert, badge: 'corrections', badgeTone: 'warning' },
       ],
     },
     {
       id: 'monitoring', label: 'Monitoring', items: [
-        { to: '/app/applications', label: 'All cases in scope', icon: FileStack },
+        { to: '/app/applications', label: 'All applications', icon: FileStack },
         { to: '/app/evc', label: 'EVC scheduling', icon: CalendarClock, capability: 'evc', badge: 'evcQueue', badgeTone: 'warning' },
         { to: '/app/compliance', label: 'Compliance verification', icon: ClipboardCheck },
         { to: '/app/expiry', label: 'Document validity', icon: TimerReset },
@@ -102,7 +102,7 @@ export const NAV: Record<Role, NavGroup[]> = {
   ],
 };
 
-export const ROLE_LABEL: Record<Role, string> = { institution: 'Institution', officer: 'AICTE officer', admin: 'Administrator' };
+export const ROLE_LABEL: Record<Role, string> = { institution: 'Institution workspace', officer: 'Officer workspace', admin: 'Administrator workspace' };
 
 export function findNav(path: string, role: Role | null): { group: NavGroup; item: NavItem } | null {
   if (!role) return null;

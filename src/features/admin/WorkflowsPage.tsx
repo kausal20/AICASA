@@ -87,8 +87,9 @@ function RouteTables({ stages, transitions }: { stages: WorkflowStage[]; transit
     <>
       <Card>
         <CardHeader title="Stages" />
-        <DataTable><thead><tr><Th>#</Th><Th>Stage</Th><Th>Kind</Th><Th>Internal target</Th><Th>Responsibility</Th></tr></thead>
-          <tbody>{stages.map((s) => <tr key={s.id}><Td className="tabular">{s.sequence}</Td><Td className="font-medium">{s.name}<p className="text-xs text-ink-soft">{s.code}</p></Td><Td>{humanize(s.kind)}</Td><Td>{s.sla_days ? `${s.sla_days} days` : '—'}</Td><Td>{s.responsible_capability ? humanize(s.responsible_capability) : '—'}</Td></tr>)}</tbody>
+        <DataTable><thead><tr><Th>#</Th><Th>Stage</Th><Th>Kind</Th><Th>Internal target</Th><Th>Responsibility</Th><Th>Concurrent reviews</Th></tr></thead>
+          <tbody>{stages.map((s) => <tr key={s.id}><Td className="tabular">{s.sequence}</Td><Td className="font-medium">{s.name}<p className="text-xs text-ink-soft">{s.code}</p></Td><Td>{humanize(s.kind)}</Td><Td>{s.sla_days ? `${s.sla_days} days` : '—'}</Td><Td>{s.responsible_capability ? humanize(s.responsible_capability) : '—'}</Td>
+            <Td>{s.reviews?.length ? <ul className="space-y-0.5 text-[13px]">{s.reviews.map((r) => <li key={r.code}>{r.name} <span className="text-xs text-ink-soft">· {humanize(r.required_capability)}</span></li>)}</ul> : '—'}</Td></tr>)}</tbody>
         </DataTable>
       </Card>
       <Card>
@@ -110,7 +111,8 @@ function RouteTables({ stages, transitions }: { stages: WorkflowStage[]; transit
 }
 
 function PublishDialog({ definitionId, stages, transitions, onClose }: { definitionId: string; stages: WorkflowStage[]; transitions: WorkflowTransition[]; onClose: () => void }) {
-  const [st, setSt] = useState(stages.map(({ code, name, kind, sequence, sla_days, responsible_capability, description }) => ({ code, name, kind, sequence, sla_days, responsible_capability, description })));
+  // configured concurrent reviews travel with their stage so a new version keeps them
+  const [st, setSt] = useState(stages.map(({ code, name, kind, sequence, sla_days, responsible_capability, description, reviews }) => ({ code, name, kind, sequence, sla_days, responsible_capability, description, reviews: reviews ?? [] })));
   const [tr, setTr] = useState(transitions.map(({ code, name, from_stage, to_stage, allowed_role, required_capability, requires_reason, is_automatic, prerequisites, records_decision, sort_order }) =>
     ({ code, name, from_stage, to_stage, allowed_role, required_capability, requires_reason, is_automatic, prerequisites, records_decision, sort_order })));
   const [source, setSource] = useState('');
@@ -142,7 +144,7 @@ function PublishDialog({ definitionId, stages, transitions, onClose }: { definit
             {tr.map((t, i) => (
               <li key={t.code} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-muted px-3 py-2 text-[13px]">
                 <span>{t.name} <span className="text-xs text-ink-soft">({t.from_stage} → {t.to_stage}{t.is_automatic ? ', automatic' : ''})</span></span>
-                {!t.is_automatic && <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" className="accent-[#176B5B]" checked={t.requires_reason} disabled={t.records_decision}
+                {!t.is_automatic && <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" className="accent-[#1e3a8a]" checked={t.requires_reason} disabled={t.records_decision}
                   onChange={(e) => setTr(tr.map((x, j) => j === i ? { ...x, requires_reason: e.target.checked } : x))} />Reason required</label>}
               </li>
             ))}

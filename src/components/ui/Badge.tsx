@@ -13,7 +13,7 @@ const tones: Record<Tone, string> = {
   success: 'bg-success-soft text-[#0f6b53] border-[#c3e5d8]',
   warning: 'bg-warning-soft text-[#7a5100] border-[#eedcb1]',
   danger: 'bg-danger-soft text-danger border-[#f3c9c4]',
-  primary: 'bg-primary-soft text-primary-ink border-[#c9e0d9]',
+  primary: 'bg-primary-soft text-primary-ink border-[#c7d3ee]',
   accent: 'bg-accent-soft text-accent border-[#cfe0ee]',
 };
 
@@ -31,15 +31,15 @@ const I = 'h-3.5 w-3.5 shrink-0';
 // Every status carries text plus an icon: colour is never the only signal.
 const STATUS: Record<string, { label: string; tone: Tone; icon: ReactNode }> = {
   draft: { label: 'Draft', tone: 'neutral', icon: <CircleDashed className={I} aria-hidden /> },
-  submitted: { label: 'Submitted', tone: 'info', icon: <Send className={I} aria-hidden /> },
-  under_scrutiny: { label: 'Under scrutiny', tone: 'accent', icon: <Eye className={I} aria-hidden /> },
-  returned_for_correction: { label: 'Returned for correction', tone: 'warning', icon: <RotateCcw className={I} aria-hidden /> },
+  submitted: { label: 'Awaiting RO Scrutiny', tone: 'info', icon: <Send className={I} aria-hidden /> },
+  under_scrutiny: { label: 'Under RO Scrutiny', tone: 'accent', icon: <Eye className={I} aria-hidden /> },
+  returned_for_correction: { label: 'Deficiencies Flagged', tone: 'warning', icon: <RotateCcw className={I} aria-hidden /> },
   correction_submitted: { label: 'Correction submitted', tone: 'info', icon: <Send className={I} aria-hidden /> },
   awaiting_verification: { label: 'Awaiting verification', tone: 'info', icon: <Clock className={I} aria-hidden /> },
   ready_for_next_stage: { label: 'Ready for next stage', tone: 'primary', icon: <CircleDot className={I} aria-hidden /> },
   evc_required: { label: 'EVC required', tone: 'warning', icon: <CalendarClock className={I} aria-hidden /> },
   evc_scheduled: { label: 'EVC scheduled', tone: 'accent', icon: <CalendarCheck className={I} aria-hidden /> },
-  evc_completed: { label: 'EVC completed', tone: 'primary', icon: <CheckCircle2 className={I} aria-hidden /> },
+  evc_completed: { label: 'EVC Completed', tone: 'primary', icon: <CheckCircle2 className={I} aria-hidden /> },
   committee_review: { label: 'Committee review', tone: 'accent', icon: <Eye className={I} aria-hidden /> },
   awaiting_decision: { label: 'Awaiting decision', tone: 'accent', icon: <Clock className={I} aria-hidden /> },
   completed: { label: 'Completed', tone: 'success', icon: <CheckCircle2 className={I} aria-hidden /> },

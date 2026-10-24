@@ -34,7 +34,7 @@ beforeAll(async () => {
 });
 
 describe('workflow configuration', () => {
-  it('has the four configured routes with distinct stage paths', async () => {
+  it('has the five configured routes with distinct stage paths', async () => {
     const rows = await t.owner<{ code: string; stages: string }>(`
       select d.code, string_agg(s.code, '>' order by s.sequence) as stages
       from workflow_definitions d join workflow_definition_versions v on v.definition_id = d.id and v.status = 'active'
@@ -42,6 +42,7 @@ describe('workflow configuration', () => {
     expect(Object.fromEntries(rows.map((r) => [r.code, r.stages]))).toEqual({
       ROUTE_EVC_COMMITTEE: 'intake>evc>committee>decision>closed',
       ROUTE_EVC_ONLY: 'intake>evc>decision>closed',
+      ROUTE_PARALLEL_SCRUTINY: 'intake>scrutiny>decision>closed',
       ROUTE_SCRUTINY_COND_EVC: 'intake>scrutiny>evc>decision>closed',
       ROUTE_SCRUTINY_ONLY: 'intake>scrutiny>decision>closed',
     });
@@ -172,7 +173,16 @@ describe('application lifecycle', () => {
     // still deficient → back to institution
     await t.as(SCRUTINY, `select review_deficiency_correction($1, 'still_deficient', 'Notary registration number is illegible on page 1.')`, [defId]);
     expect((await t.owner<{ status: string }>(`select status from applications where id = $1`, [appId]))[0].status).toBe('returned_for_correction');
-    await t.as(INST, `select submit_deficiency_correction($1, 'Re-uploaded a clearer scan of the notarised affidavit.', $2)`, [defId, v[0].v.id]);
+    // re-attaching the version already reviewed is refused: each attempt needs a new version
+    await expectSqlError(t.as(INST, `select submit_deficiency_correction($1, 'Re-uploaded a clearer scan of the notarised affidavit.', $2)`, [defId, v[0].v.id]),
+      /new version/);
+    const p3 = await uploadStub(nirmala);
+    const v3 = await t.as<{ v: { id: string; version: number } }>(INST,
+      `select to_jsonb(register_document_version($1, $2, 'affidavit', null, $3, 'aff3.pdf', null, 'Clearer scan of the notarised copy')) as v`, [nirmala, appId, p3]);
+    expect(v3[0].v.version).toBe(3);
+    await t.as(INST, `select submit_deficiency_correction($1, 'Re-uploaded a clearer scan of the notarised affidavit.', $2)`, [defId, v3[0].v.id]);
+    expect((await t.owner(`select 1 from document_versions dv join documents d on d.id = dv.document_id
+      where d.application_id = $1 and d.doc_type = 'affidavit'`, [appId])).length).toBe(3);
     await t.as(SCRUTINY, `select review_deficiency_correction($1, 'resolved', 'Notarisation verified on the replacement copy.')`, [defId]);
     st = await t.owner<{ status: string }>(`select status from deficiencies where id = $1`, [defId]);
     expect(st[0].status).toBe('resolved');
@@ -275,9 +285,14 @@ describe('EVC', () => {
     await t.as(inst, `select submit_application($1, $2)`, [r[0].a.id, v]);
     expect((await transition(SCRUTINY, r[0].a.id, 'scrutiny_to_evc')).ok).toBe(true);
     const evc = (await t.owner<{ id: string; row_version: number }>(`select id, row_version from evc_records where application_id = $1`, [r[0].a.id]))[0];
-    const res = await t.as<{ r: { conflicts: { reference: string }[] } }>(EVC,
-      `select schedule_evc($1, $2, $3, '{}', false, null, $4) as r`, [evc.id, existing.scheduled_start, existing.scheduled_end, evc.row_version]);
+    await expectSqlError(t.as(EVC, `select schedule_evc($1, $2, $3, '{}', false, null, $4)`,
+      [evc.id, existing.scheduled_start, existing.scheduled_end, evc.row_version]), /overlapping EVC.*override reason/);
+    const res = await t.as<{ r: { conflicts: { reference: string }[]; override: boolean } }>(EVC,
+      `select schedule_evc($1, $2, $3, '{}', false, null, $4, null, 'Short overlap agreed with the panel; sessions are back to back.') as r`,
+      [evc.id, existing.scheduled_start, existing.scheduled_end, evc.row_version]);
     expect(res[0].r.conflicts.length).toBe(1);
+    expect(res[0].r.override).toBe(true);
+    expect((await t.owner(`select 1 from audit_logs where action = 'evc_assignment_override' and entity_id = $1`, [evc.id])).length).toBe(1);
   });
 
   it('cancellation requires a reason and re-queues a new cycle', async () => {

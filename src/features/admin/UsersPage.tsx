@@ -106,7 +106,7 @@ function GrantDialog({ user, onClose }: { user: UserRow; onClose: () => void }) 
               <div className="flex flex-wrap gap-2">
                 {CAPS[role].map((c) => (
                   <label key={c} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] ${caps.includes(c) ? 'border-primary bg-primary-soft' : 'border-line'}`}>
-                    <input type="checkbox" className="accent-[#176B5B]" checked={caps.includes(c)} onChange={() => setCaps(caps.includes(c) ? caps.filter((x) => x !== c) : [...caps, c])} />{humanize(c)}
+                    <input type="checkbox" className="accent-[#1e3a8a]" checked={caps.includes(c)} onChange={() => setCaps(caps.includes(c) ? caps.filter((x) => x !== c) : [...caps, c])} />{humanize(c)}
                   </label>
                 ))}
               </div>

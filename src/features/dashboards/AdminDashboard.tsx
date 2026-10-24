@@ -1,3 +1,4 @@
+import { ActionQueue } from './ActionQueue';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -15,9 +16,10 @@ import { Select } from '@/components/ui/Field';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/States';
 import { Kpi, PageTitle, Panel } from '@/components/ui/Workspace';
 import { fmtDateTime, humanize } from '@/lib/format';
+import { AuditStream } from './AuditStream';
 
-export const CHART = { primary: '#176B5B', primarySoft: '#7FB7A9', warn: '#C98A12', danger: '#B42318', accent: '#236B9A', muted: '#9AA8A1', grid: '#E7ECE8' };
-export const axis = { fontSize: 12, fill: '#5D6963' };
+export const CHART = { primary: '#1e3a8a', primarySoft: '#93A8DB', warn: '#C98A12', danger: '#B42318', accent: '#236B9A', muted: '#94A3B8', grid: '#E2E7F0' };
+export const axis = { fontSize: 12, fill: '#475569' };
 
 /** Tooltip with the same type scale as the rest of the app. */
 export function ChartTooltip({ active, payload, label, hint }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string; hint?: string }) {
@@ -36,7 +38,7 @@ export function ChartTooltip({ active, payload, label, hint }: { active?: boolea
 const withRegion = (path: string, region: string) => (region ? `${path}${path.includes('?') ? '&' : '?'}region=${region}` : path);
 
 export function AdminDashboard() {
-  const { isNational, regions } = useAuth();
+  const { isNational, regions, can } = useAuth();
   const nav = useNavigate();
   const [region, setRegion] = useState<string>(isNational ? '' : regions[0] ?? '');
   const reduce = useReducedMotion();
@@ -52,8 +54,8 @@ export function AdminDashboard() {
 
   return (
     <div>
-      <PageTitle title="Operational overview"
-        description="Pendency, deadlines and follow-up across your administrative scope. Every figure is computed in the database from records your scope permits; select any tile or bar to open those records."
+      <PageTitle title="Administrator workspace"
+        description="Apex Bureau monitoring · Track pending applications, deadlines and follow-up across your administrative scope."
         meta={d && <span className="text-xs text-ink-soft">{scopeLabel} · updated {fmtDateTime(d.generated_at)} · synthetic demo data</span>}
         actions={<>
           <Select aria-label="Region scope" value={region} onChange={(e) => setRegion(e.target.value)} className="w-auto min-w-[180px]">
@@ -62,13 +64,14 @@ export function AdminDashboard() {
           </Select>
           <Button variant="secondary" icon={<RefreshCw className={`h-4 w-4 ${q.isFetching ? 'animate-spin' : ''}`} />} onClick={() => { q.refetch(); esc.refetch(); }} disabled={q.isFetching}>Refresh</Button>
         </>} />
+      <ActionQueue region={region} />
 
       {q.error ? <Panel><ErrorState error={q.error} onRetry={() => q.refetch()} /></Panel> : (
         <>
           <section aria-labelledby="attention" className="mb-8">
             <h2 id="attention" className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink-soft"><AlertTriangle className="h-4 w-4 text-danger" aria-hidden />Needs attention</h2>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-              <Kpi label="Cases past stage target" value={d?.totals.overdue ?? 0} loading={!d} icon={Hourglass} tone={d?.totals.overdue ? 'danger' : 'neutral'} to={r('/app/applications?overdue=1&sort=due')} hint="Open the overdue queue" />
+              <Kpi label="Applications past stage target" value={d?.totals.overdue ?? 0} loading={!d} icon={Hourglass} tone={d?.totals.overdue ? 'danger' : 'neutral'} to={r('/app/applications?overdue=1&sort=due')} hint="Open the overdue queue" />
               <Kpi label="Open escalations" value={d?.escalations_open ?? 0} loading={!d} icon={Siren} tone={d?.escalations_open ? 'danger' : 'neutral'} to="/app/escalations?status=open" hint="Raised by the deadline scanner" />
               <Kpi label="EVCs overdue" value={d?.evc_overdue ?? 0} loading={!d} icon={CalendarClock} tone={d?.evc_overdue ? 'warning' : 'neutral'} to="/app/evc?overdue=1" hint="Scheduling or outcome late" />
               <Kpi label="Overdue obligations" value={d?.compliance.overdue ?? 0} loading={!d} icon={ClipboardCheck} tone={d?.compliance.overdue ? 'danger' : 'neutral'} to="/app/compliance?status=overdue" hint="Evidence not submitted in time" />
@@ -88,7 +91,7 @@ export function AdminDashboard() {
 
           {!d ? <div className="grid gap-6 xl:grid-cols-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-72 rounded-card" />)}</div> : (
             <div className="grid gap-6 xl:grid-cols-12">
-              <Panel className="xl:col-span-7" title="Pendency by stage" description="Open cases per stage. Red is past the stage's internal target. Select a bar to open those cases.">
+              <Panel className="xl:col-span-7" title="Pendency by stage" description="Open applications per stage. Red is past the stage's internal target. Select a bar to open those applications.">
                 <div className="px-3 pb-3 pt-4">
                   {!d.by_stage.length ? <EmptyState title="No open applications in this scope" /> : (
                     <div className="h-64" role="img" aria-label={`Open applications by stage: ${d.by_stage.map((s) => `${s.stage} ${s.count}, ${s.overdue} past target`).join('; ')}`}>
@@ -97,7 +100,7 @@ export function AdminDashboard() {
                           <CartesianGrid vertical={false} stroke={CHART.grid} />
                           <XAxis dataKey="label" tick={axis} interval={0} tickLine={false} axisLine={false} />
                           <YAxis allowDecimals={false} tick={axis} tickLine={false} axisLine={false} />
-                          <Tooltip cursor={{ fill: '#F0F3F0' }} content={<ChartTooltip hint="Select to open these cases" />} />
+                          <Tooltip cursor={{ fill: '#EEF1F6' }} content={<ChartTooltip hint="Select to open these applications" />} />
                           <Bar dataKey="on_track" name="Within target" stackId="a" fill={CHART.primary} isAnimationActive={!reduce} cursor="pointer"
                             onClick={(x: { kind?: string }) => x.kind && nav(r(`/app/applications?stage=${x.kind}&group=open`))} />
                           <Bar dataKey="overdue" name="Past target" stackId="a" fill={CHART.danger} radius={[5, 5, 0, 0]} isAnimationActive={!reduce} cursor="pointer"
@@ -119,7 +122,7 @@ export function AdminDashboard() {
                 )}
               </Panel>
 
-              <Panel className="xl:col-span-5" title="Ageing of open cases" description="Days since submission. Select a bar to open that age band.">
+              <Panel className="xl:col-span-5" title="Ageing of open applications" description="Days since submission. Select a bar to open that age band.">
                 <div className="px-3 pb-4 pt-4">
                   {!d.ageing.length ? <EmptyState title="No open applications" /> : (
                     <div className="h-64" role="img" aria-label={`Ageing: ${d.ageing.map((a) => `${a.bucket} ${a.count}`).join(', ')}`}>
@@ -128,8 +131,8 @@ export function AdminDashboard() {
                           <CartesianGrid vertical={false} stroke={CHART.grid} />
                           <XAxis dataKey="bucket" tick={axis} tickLine={false} axisLine={false} />
                           <YAxis allowDecimals={false} tick={axis} tickLine={false} axisLine={false} />
-                          <Tooltip cursor={{ fill: '#F0F3F0' }} content={<ChartTooltip hint="Select to open these cases" />} />
-                          <Bar dataKey="count" name="Open cases" radius={[5, 5, 0, 0]} isAnimationActive={!reduce} cursor="pointer"
+                          <Tooltip cursor={{ fill: '#EEF1F6' }} content={<ChartTooltip hint="Select to open these applications" />} />
+                          <Bar dataKey="count" name="Open applications" radius={[5, 5, 0, 0]} isAnimationActive={!reduce} cursor="pointer"
                             onClick={(x: { min_days: number; max_days: number | null }) => nav(r(`/app/applications?group=open&ageMin=${x.min_days}${x.max_days !== null ? `&ageMax=${x.max_days}` : ''}&sort=age`))}>
                             {d.ageing.map((a) => <Cell key={a.bucket} fill={a.min_days >= 60 ? CHART.danger : a.min_days >= 30 ? CHART.warn : a.min_days >= 15 ? CHART.accent : CHART.primary} />)}
                           </Bar>
@@ -140,8 +143,8 @@ export function AdminDashboard() {
                 </div>
               </Panel>
 
-              <Panel className="xl:col-span-7" title="Officer workload" description="Open cases currently assigned. Select a row to open that officer's cases.">
-                {!d.workload.length ? <EmptyState title="No assigned cases" /> : (
+              <Panel className="xl:col-span-7" title="Officer workload" description="Open applications currently assigned. Select a reference to open that officer's applications.">
+                {!d.workload.length ? <EmptyState title="No assigned applications" /> : (
                   <ul className="divide-y divide-line">
                     {d.workload.map((w) => {
                       const max = Math.max(...d.workload.map((x) => x.open_cases), 1);
@@ -173,7 +176,7 @@ export function AdminDashboard() {
                         <CartesianGrid horizontal={false} stroke={CHART.grid} />
                         <XAxis type="number" allowDecimals={false} tick={axis} tickLine={false} axisLine={false} />
                         <YAxis type="category" dataKey="name" tick={axis} width={120} tickLine={false} axisLine={false} />
-                        <Tooltip cursor={{ fill: '#F0F3F0' }} content={<ChartTooltip hint="Select to open this group" />} />
+                        <Tooltip cursor={{ fill: '#EEF1F6' }} content={<ChartTooltip hint="Select to open this group" />} />
                         <Bar dataKey="count" name="EVCs" radius={[0, 5, 5, 0]} isAnimationActive={!reduce} cursor="pointer"
                           onClick={(x: { key: string }) => nav(`/app/evc?tab=${x.key === 'awaiting_scheduling' ? 'queue' : x.key === 'completed' ? 'done' : x.key}`)}>
                           {evcData.map((e) => <Cell key={e.key} fill={e.key === 'awaiting_scheduling' ? CHART.warn : e.key === 'completed' ? CHART.primary : CHART.accent} />)}
@@ -228,7 +231,7 @@ export function AdminDashboard() {
               </Panel>
 
               {isNational && !region && d.by_region.length > 0 && (
-                <Panel className="xl:col-span-12" title="Open cases by region" description="Select a region to open its cases.">
+                <Panel className="xl:col-span-12" title="Open applications by region" description="Select a region to open its applications.">
                   <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-5">
                     {d.by_region.map((x) => (
                       <Link key={x.region} to={`/app/applications?region=${x.region}&group=open`} className="rounded-xl border border-line px-4 py-3 transition-colors hover:border-line-strong hover:bg-surface-muted/60">
@@ -244,6 +247,7 @@ export function AdminDashboard() {
           )}
         </>
       )}
+      {can('audit') && <div className="mt-6"><AuditStream /></div>}
     </div>
   );
 }

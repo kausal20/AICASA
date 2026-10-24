@@ -39,6 +39,21 @@ export function humanize(s?: string | null): string {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+/**
+ * Outcome wording for a decision recorded by an officer. "EoA Issued" is used only for an Extension of Approval
+ * (EOA) dossier whose recorded decision is an approval; other application types keep neutral wording.
+ */
+export function decisionLabel(decision: string, applicationType?: string): string {
+  const eoa = applicationType === 'EOA';
+  switch (decision) {
+    case 'approved': return eoa ? 'EoA Issued' : 'Approved';
+    case 'approved_with_conditions': return eoa ? 'EoA Issued (with conditions)' : 'Approved with conditions';
+    case 'not_approved': return 'Dossier Rejected / Non-Compliant';
+    case 'deferred': return 'Deferred';
+    default: return humanize(decision);
+  }
+}
+
 export function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1048576) return `${(n / 1024).toFixed(0)} KB`;

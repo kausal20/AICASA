@@ -54,7 +54,10 @@ export interface DocumentRequirement {
 export interface WorkflowStage {
   id: string; version_id: string; code: string; name: string; kind: StageKind; sequence: number; sla_days: number | null;
   responsible_capability: string | null; description: string;
+  /** Concurrent reviews configured for this stage (route version specific). */
+  reviews?: StageReview[];
 }
+export interface StageReview { code: string; name: string; required_capability: string; description: string; sort_order: number }
 export interface WorkflowTransition {
   id: string; version_id: string; code: string; name: string; from_stage: string; to_stage: string; allowed_role: Role | null;
   required_capability: string | null; requires_reason: boolean; is_automatic: boolean; prerequisites: string[];
@@ -104,6 +107,9 @@ export interface Deficiency {
   id: string; application_id: string; stage_code: string; title: string; reason: string; requirement_source: string;
   requested_correction: string; doc_type: string | null; responsible_party: string; due_at: string; status: DeficiencyStatus;
   raised_by: string; raised_at: string; resolved_at: string | null; row_version: number;
+  affected_document_version_id: string | null;
+  /** captured_at_raise = recorded when the memo was raised; inferred_unverified = reconstructed later and not proven; null = none */
+  affected_version_basis: 'captured_at_raise' | 'inferred_unverified' | null;
   deficiency_submissions?: DeficiencySubmission[]; deficiency_reviews?: DeficiencyReview[];
   applications?: { reference: string; title: string; institution_id: string; status: ApplicationStatus };
 }
@@ -184,3 +190,43 @@ export interface AnalyticsSummary {
 }
 
 export interface DirectoryEntry { id: string; full_name: string; designation: string | null; roles: string[] | null }
+
+// ---- Deficiency Matrix ----------------------------------------------------
+export type MatrixResult = 'passed' | 'potential_issue' | 'failed_validation' | 'extraction_failed' | 'not_checked' | 'manual_review';
+export interface MatrixRow {
+  section: 'form' | 'documents' | 'duplicates' | 'precheck' | 'rules'; check_code: string; label: string; input_value: string;
+  requirement: string; result: MatrixResult; rule_ref: string; source: string; explanation: string; is_synthetic: boolean;
+  document_id: string | null; sort_order: number;
+}
+export interface ComplianceRule {
+  id: string; code: string; version: number; label: string; kind: string; applies_to: string[]; params: Record<string, unknown>;
+  source_reference: string; is_synthetic: boolean; explanation: string; status: 'active' | 'retired'; created_at: string;
+  retired_at: string | null; retired_reason: string | null;
+}
+
+// ---- Concurrent review tasks ---------------------------------------------
+export type ReviewTaskStatus = 'pending' | 'in_review' | 'completed' | 'returned' | 'cancelled';
+export interface ReviewTask {
+  id: string; application_id: string; stage_history_id: string; stage_code: string; review_code: string; name: string;
+  required_capability: string; region_code: string; assignee_id: string | null; status: ReviewTaskStatus; outcome_note: string | null;
+  due_at: string | null; row_version: number; created_at: string; started_at: string | null; completed_at: string | null;
+  completed_by: string | null; applications?: { reference: string; title: string } | null;
+  review_task_history?: ReviewTaskHistory[];
+}
+export interface ReviewTaskHistory { id: string; task_id: string; action: string; from_status: string | null; to_status: string | null; actor_id: string | null; reason: string | null; created_at: string }
+
+// ---- EVC assignment checks ------------------------------------------------
+export type CheckStatus = 'ok' | 'info' | 'manual_review' | 'blocked';
+export interface EvcCheckReason { code: string; status: CheckStatus; overridable?: boolean; detail: string }
+export interface EvcPersonCheck { user_id: string; name: string; status: 'eligible' | 'manual_review' | 'blocked'; overridable: boolean; reasons: EvcCheckReason[] }
+export interface EvcAssignmentCheck { readiness: EvcCheckReason[]; people: EvcPersonCheck[]; policy: Record<string, unknown> | null; blocked: boolean; needs_override: boolean }
+export interface EvcAvailability { id: string; user_id: string; starts_at: string; ends_at: string; kind: 'available' | 'unavailable'; note: string | null; withdrawn_at: string | null; created_at: string }
+export interface EvcConflictDeclaration { id: string; user_id: string; institution_id: string; nature: string; declared_at: string; withdrawn_at: string | null; institutions?: { name: string } | null }
+
+// ---- Document version comparison -----------------------------------------
+export interface VersionMeta { id: string; version: number; file_name: string; mime_type: string; size_bytes: number; sha256: string | null; uploaded_at: string; replaced_reason: string | null }
+export interface VersionComparison {
+  document: { id: string; title: string; doc_type: string }; old: VersionMeta; new: VersionMeta; identical_file: boolean;
+  metadata_changes: { field: string; old: string | number; new: string | number }[];
+  content: { available: boolean; reason: string | null; fields: { check_code: string; label: string; old: string | null; new: string | null; old_outcome: string | null; new_outcome: string | null; changed: boolean }[] };
+}

@@ -13,6 +13,7 @@ import { ErrorState, LoadingRows, Notice } from '@/components/ui/States';
 import { useAction } from '@/hooks/useAction';
 import { fmtDateTime, humanize } from '@/lib/format';
 import type { EscalationRule } from '@/types/domain';
+import { ComplianceRulesPanel } from './ComplianceRulesPanel';
 
 export function offsetText(h: number) {
   const abs = Math.abs(h);
@@ -52,6 +53,7 @@ export function RulesPage() {
         )}
         <p className="border-t border-line px-5 py-3 text-xs text-ink-soft">* Email is attempted only when an email provider is configured; otherwise each attempt is logged as skipped.</p>
       </Card>
+      <ComplianceRulesPanel />
       {edit && <EditRule r={edit} onClose={() => setEdit(null)} />}
       {history && (
         <Dialog open onOpenChange={() => setHistory(null)} title={`${history} — version history`}>
@@ -90,7 +92,7 @@ function EditRule({ r, onClose }: { r: EscalationRule; onClose: () => void }) {
         <SelectField label="Channel" required value={f.channel} onChange={set('channel')}><option value="in_app">In-app</option><option value="in_app_and_email">In-app and email</option></SelectField>
         <TextField label="Maximum notices" type="number" min={1} max={10} required value={f.repeats} onChange={set('repeats')} />
         <TextField label="Repeat interval (hours)" type="number" min={1} value={f.interval} onChange={set('interval')} />
-        <label className="flex items-center gap-2 text-[13px] sm:col-span-2"><input type="checkbox" className="accent-[#176B5B]" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Rule active</label>
+        <label className="flex items-center gap-2 text-[13px] sm:col-span-2"><input type="checkbox" className="accent-[#1e3a8a]" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Rule active</label>
         <div className="sm:col-span-2"><TextField label="Source reference" value={f.source} onChange={set('source')} /></div>
         <div className="sm:col-span-2"><TextAreaField label="Change summary" required rows={2} value={f.summary} onChange={set('summary')} /></div>
       </div>

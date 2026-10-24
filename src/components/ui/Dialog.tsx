@@ -15,7 +15,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
         {open && (
           <RD.Portal forceMount>
             <RD.Overlay asChild forceMount>
-              <motion.div className="fixed inset-0 z-50 bg-[#17211D]/35" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} />
+              <motion.div className="fixed inset-0 z-50 bg-[#0F172A]/35" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} />
             </RD.Overlay>
             <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
               <RD.Content asChild forceMount aria-describedby={description ? undefined : undefined}>

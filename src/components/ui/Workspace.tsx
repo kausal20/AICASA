@@ -17,7 +17,7 @@ export function Drawer({ open, onOpenChange, title, subtitle, children, footer, 
         {open && (
           <RD.Portal forceMount>
             <RD.Overlay asChild forceMount>
-              <motion.div className="fixed inset-0 z-50 bg-[#17211D]/30" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} />
+              <motion.div className="fixed inset-0 z-50 bg-[#0F172A]/30" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} />
             </RD.Overlay>
             <RD.Content asChild forceMount>
               <motion.aside
@@ -82,7 +82,7 @@ export function Panel({ title, description, action, children, className, bodyCla
   tone?: 'default' | 'attention';
 }) {
   return (
-    <section className={cn('min-w-0 overflow-hidden rounded-card border bg-surface shadow-card', tone === 'attention' ? 'border-[#eedcb1]' : 'border-line', className)}>
+    <section className={cn('workspace-panel min-w-0 overflow-hidden rounded-card border bg-surface shadow-card', tone === 'attention' ? 'border-[#eedcb1]' : 'border-line', className)}>
       {(title || action) && (
         <div className={cn('flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3.5', tone === 'attention' ? 'border-[#f2e3bd] bg-warning-soft/50' : 'border-line')}>
           <div className="min-w-0">
@@ -121,7 +121,7 @@ export function RowMenu({ actions, label = 'Row actions' }: { actions: RowAction
   return (
     <DM.Root>
       <DM.Trigger onClick={(e) => e.stopPropagation()} aria-label={label}
-        className="rounded-md p-1.5 text-ink-soft hover:bg-surface-sunken hover:text-ink data-[state=open]:bg-surface-sunken">
+        className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-soft hover:bg-surface-sunken hover:text-ink data-[state=open]:bg-surface-sunken">
         <MoreHorizontal className="h-4 w-4" />
       </DM.Trigger>
       <DM.Portal>
@@ -142,7 +142,7 @@ export function RowMenu({ actions, label = 'Row actions' }: { actions: RowAction
 export function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
     <motion.span layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-      className="inline-flex items-center gap-1 rounded-full border border-[#c9e0d9] bg-primary-soft py-0.5 pl-2.5 pr-1 text-xs font-medium text-primary-ink">
+      className="inline-flex items-center gap-1 rounded-full border border-[#c7d3ee] bg-primary-soft py-0.5 pl-2.5 pr-1 text-xs font-medium text-primary-ink">
       {label}
       <button onClick={onRemove} className="rounded-full p-0.5 hover:bg-white/70" aria-label={`Remove filter ${label}`}><X className="h-3 w-3" /></button>
     </motion.span>

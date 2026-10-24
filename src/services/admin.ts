@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { unwrap } from '@/lib/errors';
-import type { AuditRow, EscalationRule, Role, WorkflowVersion } from '@/types/domain';
+import type { AuditRow, ComplianceRule, EscalationRule, Role, WorkflowVersion } from '@/types/domain';
 
 export async function listWorkflowDefinitions() {
   return unwrap(await supabase.from('workflow_definitions').select('*, workflow_definition_versions(*)').order('name')) as
@@ -97,4 +97,32 @@ export async function listRegions() {
 export async function listInstitutions() {
   return unwrap(await supabase.from('institutions').select('*').order('name')) as
     { id: string; code: string; name: string; kind: string; region_code: string; state: string; city: string; address: string | null; contact_email: string | null; contact_phone: string | null; is_demo: boolean }[];
+}
+
+/** Current SHA-256 of each document, keyed by document id (latest version wins). Used to show real hashes in the event stream. */
+export async function latestDocumentHashes(documentIds: string[]) {
+  if (!documentIds.length) return {} as Record<string, string>;
+  const rows = unwrap(await supabase.from('document_versions').select('document_id, version, sha256').in('document_id', documentIds).order('version', { ascending: false })) as
+    { document_id: string; version: number; sha256: string | null }[];
+  const out: Record<string, string> = {};
+  for (const r of rows) if (r.sha256 && !(r.document_id in out)) out[r.document_id] = r.sha256;
+  return out;
+}
+
+export async function listComplianceRules() {
+  return unwrap(await supabase.from('compliance_rules').select('*').order('code').order('version', { ascending: false })) as ComplianceRule[];
+}
+
+export async function publishComplianceRule(input: {
+  code: string; label: string; kind: string; appliesTo: string[]; params: Record<string, unknown>; source: string; synthetic: boolean;
+  explanation: string; reason: string;
+}) {
+  return unwrap(await supabase.rpc('publish_compliance_rule', {
+    p_code: input.code, p_label: input.label, p_kind: input.kind, p_applies_to: input.appliesTo, p_params: input.params,
+    p_source_reference: input.source, p_is_synthetic: input.synthetic, p_explanation: input.explanation, p_change_reason: input.reason,
+  })) as ComplianceRule;
+}
+
+export async function retireComplianceRule(code: string, reason: string) {
+  return unwrap(await supabase.rpc('retire_compliance_rule', { p_code: code, p_reason: reason })) as ComplianceRule;
 }

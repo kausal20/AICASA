@@ -32,6 +32,9 @@ export const DEMO_DOCUMENTS = [
   { key: 'N_annual_return', inst: 'DEMO-WR-001', mime: 'application/pdf', lines: [S, 'ANNUAL RETURN 2026', 'Nirmala Institute of Technology (Demo)', 'Faculty and student strength return'] },
   { key: 'S_fire_validity', inst: 'DEMO-WR-002', mime: 'application/pdf', lines: [S, 'FIRE SAFETY CERTIFICATE - HOSTEL', 'Sahyadri College of Engineering (Demo)', 'Valid till 13/10/2026'] },
   { key: 'S_occupancy', inst: 'DEMO-WR-002', mime: 'application/pdf', lines: [S, 'OCCUPANCY CERTIFICATE', 'Library block, Sahyadri College of Engineering (Demo)'] },
+  { key: 'P1_lease', inst: 'DEMO-WR-002', mime: 'application/pdf', lines: [S, 'LEASE DEED - NEW SITE', 'Lessee: Sahyadri College of Engineering (Demo)', 'Survey 310, Demo Nagar Phase II, Nashik', 'Date of issue: 14/03/2026', 'Lease period ending 13/03/2056'] },
+  { key: 'P1_plan', inst: 'DEMO-WR-002', mime: 'application/pdf', lines: [S, 'BUILDING PLAN APPROVAL - NEW SITE', 'Sahyadri College of Engineering (Demo)', 'Survey 310 campus', 'Dated 02/06/2026'] },
+  { key: 'P1_fire', inst: 'DEMO-WR-002', mime: 'application/pdf', lines: [S, 'FIRE SAFETY CERTIFICATE - NEW SITE', 'Issued to Sahyadri College of Engineering (Demo)', 'Date of issue: 20/08/2026', 'Valid till 19/08/2029'] },
 ];
 
 // 1×1 grey PNG standing in for a scanned image (deliberately unreadable without OCR).

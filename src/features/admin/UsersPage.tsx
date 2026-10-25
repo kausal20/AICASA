@@ -13,6 +13,7 @@ import { Input, SelectField, TextAreaField } from '@/components/ui/Field';
 import { EmptyState, ErrorState, LoadingRows, Notice } from '@/components/ui/States';
 import { useAction } from '@/hooks/useAction';
 import { humanize } from '@/lib/format';
+import { responsibilityLabel } from '@/lib/responsibilities';
 import type { Role } from '@/types/domain';
 
 const CAPS: Record<Role, string[]> = {
@@ -50,7 +51,7 @@ export function UsersPage() {
                       {u.user_role_assignments.filter((r) => r.is_active).map((r) => (
                         <li key={r.id} className="flex flex-wrap items-center gap-1.5 text-[13px]">
                           <Badge tone={r.role === 'admin' ? 'accent' : r.role === 'officer' ? 'primary' : 'neutral'}>{humanize(r.role)} · {r.role === 'institution' ? 'member' : r.region_code ?? 'National'}</Badge>
-                          <span className="text-xs text-ink-soft">{r.capabilities.map(humanize).join(', ')}</span>
+                          <span className="text-xs text-ink-soft">{r.capabilities.map(responsibilityLabel).join(', ')}</span>
                           {u.id !== session?.user.id && <button className="text-xs font-medium text-danger hover:underline" onClick={() => setRevoke({ user: u, id: r.id, label: `${humanize(r.role)} ${r.region_code ?? ''}` })}>Revoke</button>}
                         </li>
                       ))}
@@ -136,7 +137,7 @@ function GrantDialog({ user, onClose }: { user: UserRow; onClose: () => void }) 
               <div className="flex flex-wrap gap-2">
                 {CAPS[role].map((c) => (
                   <label key={c} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] ${caps.includes(c) ? 'border-primary bg-primary-soft' : 'border-line'}`}>
-                    <input type="checkbox" className="accent-[#1e3a8a]" checked={caps.includes(c)} onChange={() => setCaps(caps.includes(c) ? caps.filter((x) => x !== c) : [...caps, c])} />{humanize(c)}
+                    <input type="checkbox" className="accent-[#1e3a8a]" checked={caps.includes(c)} onChange={() => setCaps(caps.includes(c) ? caps.filter((x) => x !== c) : [...caps, c])} />{responsibilityLabel(c)}
                   </label>
                 ))}
               </div>

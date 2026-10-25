@@ -13,6 +13,7 @@ import { Notice } from '@/components/ui/States';
 import { Badge } from '@/components/ui/Badge';
 import { useAction } from '@/hooks/useAction';
 import { humanize } from '@/lib/format';
+import { responsibilityLabel } from '@/lib/responsibilities';
 import { ROLE_LABEL } from '@/components/layout/nav';
 
 const KINDS = ['stage_changed', 'assignment', 'submitted', 'deficiency', 'correction_received', 'evc', 'compliance', 'reminder', 'escalation', 'decision'];
@@ -47,7 +48,7 @@ export function ProfilePage() {
               {context?.roles.map((r) => (
                 <li key={r.id} className="text-[13px]">
                   <p className="font-medium">{ROLE_LABEL[r.role]} · {r.role === 'institution' ? 'institution membership' : r.region_code ?? 'National scope'}</p>
-                  <div className="mt-1 flex flex-wrap gap-1">{r.capabilities.map((c) => <Badge key={c} tone="neutral">{humanize(c)}</Badge>)}</div>
+                  <div className="mt-1 flex flex-wrap gap-1">{r.capabilities.map((c) => <Badge key={c} tone="neutral">{responsibilityLabel(c)}</Badge>)}</div>
                 </li>
               ))}
             </ul>

@@ -12,6 +12,7 @@ import { ErrorState, LoadingRows } from '@/components/ui/States';
 import { Disclosure, Panel } from '@/components/ui/Workspace';
 import { useAction } from '@/hooks/useAction';
 import { fmtDateTime, humanize } from '@/lib/format';
+import { responsibilityLabel } from '@/lib/responsibilities';
 import type { Capability, ReviewTask, ReviewTaskStatus } from '@/types/domain';
 
 export const REVIEW_STATUS: Record<ReviewTaskStatus, { label: string; tone: Tone }> = {
@@ -64,7 +65,7 @@ export function ReviewTasksPanel({ applicationId }: { applicationId: string }) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[13.5px] font-medium text-ink">{t.name}</p>
-                  <p className="text-xs text-ink-soft">{humanize(t.required_capability)} responsibility · {name(t.assignee_id)}{mine ? ' (you)' : ''}</p>
+                  <p className="text-xs text-ink-soft">{responsibilityLabel(t.required_capability)} · {name(t.assignee_id)}{mine ? ' (you)' : ''}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={REVIEW_STATUS[t.status].tone}>{REVIEW_STATUS[t.status].label}</Badge>
@@ -145,7 +146,7 @@ function ReassignReviewDialog({ task, onClose }: { task: ReviewTask; onClose: ()
   const [reason, setReason] = useState('');
   const act = useAction(() => reassignReviewTask(task.id, officer, reason, task.row_version), { success: 'Review reassigned.', invalidate: INVALIDATE, onSuccess: onClose });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title="Reassign review" description={`${task.name} · needs the ${humanize(task.required_capability).toLowerCase()} responsibility in region ${task.region_code}`}
+    <Dialog open onOpenChange={(o) => !o && onClose()} title="Reassign review" description={`${task.name} · needs the ${responsibilityLabel(task.required_capability)} responsibility in region ${task.region_code}`}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={!officer || reason.trim().length < 10} onClick={() => act.mutate(undefined)}>Reassign</Button></>}>
       <div className="space-y-4">
         <SelectField label="Officer" required value={officer} onChange={(e) => setOfficer(e.target.value)} hint="The server accepts only officers holding the required responsibility for this region.">

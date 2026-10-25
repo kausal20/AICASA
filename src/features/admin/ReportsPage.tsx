@@ -19,7 +19,7 @@ interface ReportDef { code: string; name: string; description: string; view: str
 const REPORTS: ReportDef[] = [
   { code: 'pendency', name: 'Application pendency and ageing', description: 'Open and closed applications with stage, age and target dates.', view: 'v_applications', dateCol: 'created_at', regionCol: 'region_code',
     columns: [{ key: 'reference', label: 'Reference' }, { key: 'institution_name', label: 'Institution' }, { key: 'region_code', label: 'Region' }, { key: 'application_type_name', label: 'Type' },
-      { key: 'stage_name', label: 'Stage' }, { key: 'status', label: 'Status' }, { key: 'assigned_officer_name', label: 'Assigned officer' }, { key: 'age_days', label: 'Age (days)' },
+      { key: 'stage_name', label: 'Stage' }, { key: 'status', label: 'Status' }, { key: 'assigned_officer_name', label: 'Regional Officer' }, { key: 'age_days', label: 'Age (days)' },
       { key: 'stage_age_days', label: 'Days in stage' }, { key: 'stage_due_at', label: 'Stage target' }, { key: 'is_overdue', label: 'Past target' }] },
   { code: 'evc', name: 'EVC queue and outcomes', description: 'Awaiting, scheduled, completed and delayed EVCs.', view: 'v_evc_queue', dateCol: 'ready_at', regionCol: 'region_code',
     columns: [{ key: 'reference', label: 'Reference' }, { key: 'institution_name', label: 'Institution' }, { key: 'region_code', label: 'Region' }, { key: 'cycle', label: 'Cycle' }, { key: 'status', label: 'Status' },

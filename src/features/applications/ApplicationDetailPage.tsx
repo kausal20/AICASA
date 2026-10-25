@@ -32,6 +32,7 @@ import { DeficiencyMatrix } from '@/features/compliance/DeficiencyMatrix';
 import { ReviewTasksPanel } from './ReviewTasksPanel';
 import { useAction } from '@/hooks/useAction';
 import { cn } from '@/lib/cn';
+import { REGIONAL_OFFICER_LABEL, auditActionLabel, auditResponsibilities } from '@/lib/responsibilities';
 import { decisionLabel, fmtDate, fmtDateTime, humanize, endOfDayIso } from '@/lib/format';
 import type { Application, ApplicationRow, AvailableTransition, AppEvent, Deficiency, EvcRow } from '@/types/domain';
 
@@ -200,7 +201,7 @@ function NextActionCard({ a, isRep, transitions, awaitingReview, openDefs, onTab
       <div className="space-y-4 px-5 py-4">
         {!closed && (
           <Person label="With" name={withInstitution ? a.institution_name : a.assigned_officer_name ?? 'Not yet assigned'}
-            sub={withInstitution ? 'Institution' : a.assigned_officer_name ? humanize(a.next_actor) : 'Routing will assign an officer'} />
+            sub={withInstitution ? 'Institution' : a.assigned_officer_name ? (a.next_actor === 'officer' ? REGIONAL_OFFICER_LABEL : humanize(a.next_actor)) : `Routing will assign a ${REGIONAL_OFFICER_LABEL}`} />
         )}
         {!closed && (
           <div>
@@ -217,14 +218,14 @@ function NextActionCard({ a, isRep, transitions, awaitingReview, openDefs, onTab
   );
 }
 
-function CaseFacts({ a }: { a: ApplicationRow }) {
+export function CaseFacts({ a }: { a: ApplicationRow }) {
   return (
     <Panel title="Case facts">
       <dl className="divide-y divide-line text-[13px]">
         {[
           ['Submitted', a.submitted_at ? `${fmtDate(a.submitted_at)} · ${a.age_days} days ago` : 'Not submitted'],
           ['In current stage', a.submitted_at ? `${a.stage_age_days} days (${a.stage_name})` : '—'],
-          ['Assigned officer', a.assigned_officer_name ?? '—'],
+          [REGIONAL_OFFICER_LABEL, a.assigned_officer_name ?? '—'],
           ['Region', a.region_code],
           ['Institution code', a.institution_code],
           ['Route', `${a.route_name} · version ${a.route_version}`],
@@ -285,7 +286,7 @@ function OfficerActions({ a, transitions, loading, openDeficiencies, canAssign }
             )}
           </>
         )}
-        {canAssign && !closed && <Button variant="ghost" className="w-full" icon={<UserCog className="h-4 w-4" />} onClick={() => setReassign(true)}>Reassign case</Button>}
+        {canAssign && !closed && <Button variant="ghost" className="w-full" icon={<UserCog className="h-4 w-4" />} onClick={() => setReassign(true)}>Reassign {REGIONAL_OFFICER_LABEL}</Button>}
       </div>
       {active && <TransitionDialog a={a} t={active} onClose={() => setActive(null)} />}
       {def && <RaiseDeficiencyDialog a={a} onClose={() => setDef(false)} />}
@@ -300,7 +301,7 @@ function AdminActions({ a, canAssign }: { a: ApplicationRow; canAssign: boolean 
   if (!canAssign || ['completed', 'closed', 'draft'].includes(a.status)) return null;
   return (
     <Panel title="Administration">
-      <div className="px-5 py-4"><Button variant="secondary" className="w-full" icon={<UserCog className="h-4 w-4" />} onClick={() => setReassign(true)}>Reassign case</Button></div>
+      <div className="px-5 py-4"><Button variant="secondary" className="w-full" icon={<UserCog className="h-4 w-4" />} onClick={() => setReassign(true)}>Reassign {REGIONAL_OFFICER_LABEL}</Button></div>
       {reassign && <ReassignDialog a={a} onClose={() => setReassign(false)} />}
     </Panel>
   );
@@ -498,9 +499,10 @@ function AuditTab({ id, name }: { id: string; name: (id: string | null) => strin
       <ul className="divide-y divide-line">
         {(q.data ?? []).map((r) => (
           <li key={r.id} className="px-5 py-3 text-[13px]">
-            <p><Badge tone={r.action.includes('rejected') ? 'danger' : 'neutral'}>{humanize(r.action)}</Badge>
+            <p><Badge tone={r.action.includes('rejected') ? 'danger' : 'neutral'}>{auditActionLabel(r.action)}</Badge>
               <span className="ml-2 text-ink-soft">{fmtDateTime(r.created_at)} · {r.actor_kind === 'system' ? 'System' : r.actor_name ?? name(r.actor_id)}</span></p>
             {r.reason && <p className="mt-1 text-ink-soft">{r.reason}</p>}
+            {auditResponsibilities(r).length > 0 && <p className="mt-1 text-xs text-ink-soft">Responsibilities: {auditResponsibilities(r).join(', ')}</p>}
           </li>
         ))}
       </ul>
@@ -615,7 +617,7 @@ function ReassignDialog({ a, onClose }: { a: ApplicationRow; onClose: () => void
   const [reason, setReason] = useState('');
   const act = useAction(() => reassignApplication(a.id, officer, reason), { success: 'Case reassigned.', invalidate: [['application'], ['applications']], onSuccess: onClose });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title="Reassign case" description="Only officers holding this stage's responsibility in the region are accepted by the server."
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={`Reassign ${REGIONAL_OFFICER_LABEL}`} description="Only officers holding this stage's responsibility in the region are accepted by the server."
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={!officer || reason.trim().length < 10} onClick={() => act.mutate(undefined)}>Reassign</Button></>}>
       <div className="space-y-4">
         <SelectField label="Officer" required value={officer} onChange={(e) => setOfficer(e.target.value)}>

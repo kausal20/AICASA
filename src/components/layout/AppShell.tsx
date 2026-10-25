@@ -15,6 +15,7 @@ import { cn } from '@/lib/cn';
 import { listNotifications, markRead } from '@/services/operations';
 import { useNavCounts } from '@/hooks/useNavCounts';
 import { fmtDateTime, humanize } from '@/lib/format';
+import { responsibilityLabel } from '@/lib/responsibilities';
 import type { Role } from '@/types/domain';
 
 const COLLAPSE_KEY = 'aicasa.nav.collapsed';
@@ -117,7 +118,7 @@ function ScopeCard() {
     <div className="rounded-xl bg-surface-muted px-3 py-2.5">
       <p className="text-[11px] font-medium text-ink-faint">{workspace ? ROLE_LABEL[workspace] : ''} · scope</p>
       <p className="mt-0.5 text-[13px] font-semibold text-ink">{regions.join(', ')}{regions[0] !== 'National' && ' region'}</p>
-      <p className="mt-1 text-[11px] leading-snug text-ink-soft">{caps.map(humanize).join(' · ') || 'No responsibilities'}</p>
+      <p className="mt-1 text-[11px] leading-snug text-ink-soft">{caps.map(responsibilityLabel).join(' · ') || 'No responsibilities'}</p>
     </div>
   );
 }

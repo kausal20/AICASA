@@ -13,6 +13,7 @@ import { Input, Select, TextAreaField, TextField } from '@/components/ui/Field';
 import { ErrorState, LoadingRows, Notice } from '@/components/ui/States';
 import { useAction } from '@/hooks/useAction';
 import { fmtDateTime, humanize } from '@/lib/format';
+import { responsibilityLabel } from '@/lib/responsibilities';
 import type { WorkflowStage, WorkflowTransition, WorkflowVersion } from '@/types/domain';
 
 export function WorkflowsPage() {
@@ -82,14 +83,14 @@ function VersionMeta({ v }: { v: WorkflowVersion }) {
   );
 }
 
-function RouteTables({ stages, transitions }: { stages: WorkflowStage[]; transitions: WorkflowTransition[] }) {
+export function RouteTables({ stages, transitions }: { stages: WorkflowStage[]; transitions: WorkflowTransition[] }) {
   return (
     <>
       <Card>
         <CardHeader title="Stages" />
         <DataTable><thead><tr><Th>#</Th><Th>Stage</Th><Th>Kind</Th><Th>Internal target</Th><Th>Responsibility</Th><Th>Concurrent reviews</Th></tr></thead>
-          <tbody>{stages.map((s) => <tr key={s.id}><Td className="tabular">{s.sequence}</Td><Td className="font-medium">{s.name}<p className="text-xs text-ink-soft">{s.code}</p></Td><Td>{humanize(s.kind)}</Td><Td>{s.sla_days ? `${s.sla_days} days` : '—'}</Td><Td>{s.responsible_capability ? humanize(s.responsible_capability) : '—'}</Td>
-            <Td>{s.reviews?.length ? <ul className="space-y-0.5 text-[13px]">{s.reviews.map((r) => <li key={r.code}>{r.name} <span className="text-xs text-ink-soft">· {humanize(r.required_capability)}</span></li>)}</ul> : '—'}</Td></tr>)}</tbody>
+          <tbody>{stages.map((s) => <tr key={s.id}><Td className="tabular">{s.sequence}</Td><Td className="font-medium">{s.name}<p className="text-xs text-ink-soft">{s.code}</p></Td><Td>{humanize(s.kind)}</Td><Td>{s.sla_days ? `${s.sla_days} days` : '—'}</Td><Td>{s.responsible_capability ? responsibilityLabel(s.responsible_capability) : '—'}</Td>
+            <Td>{s.reviews?.length ? <ul className="space-y-0.5 text-[13px]">{s.reviews.map((r) => <li key={r.code}>{r.name} <span className="text-xs text-ink-soft">· {responsibilityLabel(r.required_capability)}</span></li>)}</ul> : '—'}</Td></tr>)}</tbody>
         </DataTable>
       </Card>
       <Card>
@@ -99,7 +100,7 @@ function RouteTables({ stages, transitions }: { stages: WorkflowStage[]; transit
             <tr key={t.id}>
               <Td className="font-medium">{t.name}<p className="text-xs text-ink-soft">{t.code}{t.records_decision && ' · records decision'}</p></Td>
               <Td className="text-[13px]">{t.from_stage} → {t.to_stage}</Td>
-              <Td className="text-[13px]">{t.is_automatic ? <Badge tone="accent">Automatic</Badge> : `${humanize(t.allowed_role)}${t.required_capability ? ` · ${humanize(t.required_capability)}` : ''}`}</Td>
+              <Td className="text-[13px]">{t.is_automatic ? <Badge tone="accent">Automatic</Badge> : `${humanize(t.allowed_role)}${t.required_capability ? ` · ${responsibilityLabel(t.required_capability)}` : ''}`}</Td>
               <Td><div className="flex flex-wrap gap-1">{t.prerequisites.length ? t.prerequisites.map((p) => <Badge key={p} tone="neutral">{p}</Badge>) : '—'}</div></Td>
               <Td>{t.requires_reason ? 'Required' : 'Optional'}</Td>
             </tr>
@@ -132,7 +133,7 @@ function PublishDialog({ definitionId, stages, transitions, onClose }: { definit
                   onChange={(e) => setSt(st.map((x, j) => j === i ? { ...x, sla_days: e.target.value ? Number(e.target.value) : null } : x))} />
                 <Select aria-label={`${s.code} responsibility`} value={s.responsible_capability ?? ''} disabled={s.kind === 'intake' || s.kind === 'terminal'}
                   onChange={(e) => setSt(st.map((x, j) => j === i ? { ...x, responsible_capability: e.target.value || null } : x))}>
-                  <option value="">None</option>{['scrutiny', 'evc', 'committee', 'decision'].map((c) => <option key={c} value={c}>{humanize(c)}</option>)}
+                  <option value="">None</option>{['scrutiny', 'evc', 'committee', 'decision'].map((c) => <option key={c} value={c}>{responsibilityLabel(c)}</option>)}
                 </Select>
               </div>
             ))}

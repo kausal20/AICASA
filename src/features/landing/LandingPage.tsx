@@ -1,59 +1,244 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { ArrowRight, Check, FileCheck2, Fingerprint, GraduationCap, ShieldCheck, Users } from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import {
+  ArrowDown, ArrowRight, ArrowUpRight, Building2, Check, CheckCheck,
+  ChevronRight, CircleCheck, Clock3, FileCheck2, FileText, Fingerprint,
+  GitCompareArrows, GraduationCap, Layers3, Pause, Play, ScanSearch,
+  ShieldCheck, Users, X,
+} from 'lucide-react';
 import { Mark } from '@/components/layout/Wordmark';
+import { Badge } from '@/components/ui/Badge';
 import { Button, ButtonLink } from '@/components/ui/Button';
-import { Link000, Link003 } from '@/components/ui/skiper-ui/skiper40';
+import { Link000 } from '@/components/ui/skiper-ui/skiper40';
+import { cn } from '@/lib/cn';
+import './landing.css';
 
+const JOURNEY_INTERVAL = 4500;
 const JOURNEY = [
-  { name: 'Submission', owner: 'Institution', title: 'A complete application. One clear starting point.', detail: 'Upload the required documents, review pre-check findings, and submit through the configured route.', evidence: 'Application submitted · reference recorded', icon: FileCheck2 },
-  { name: 'Scrutiny', owner: 'Assigned officer', title: 'Every review has an owner.', detail: 'Officers review the application and evidence. Independent reviews can run together when the route requires them.', evidence: 'Review assigned · stage target visible', icon: ShieldCheck },
-  { name: 'Correction', owner: 'Institution → officer', title: 'Resolve the issue without losing the history.', detail: 'Respond to a deficiency, attach a newer document version, and send it back for officer review.', evidence: 'Version 2 submitted · version 1 preserved', icon: FileCheck2 },
-  { name: 'Expert visit', owner: 'EVC coordinator', title: 'The right people. A clear schedule.', detail: 'Where an Expert Visit Committee is required, check availability and declared conflicts before scheduling.', evidence: 'Panel checked · visit scheduled', icon: Users },
-  { name: 'Decision', owner: 'Authorised officer', title: 'A recorded decision, with a traceable path.', detail: 'The competent officer records the decision and reasons. Applicable compliance obligations continue afterward.', evidence: 'Decision recorded · audit history retained', icon: Fingerprint },
+  { name: 'Submission', short: 'Documents in', owner: 'Institution', title: 'One complete application. One starting point.', detail: 'Required documents come together in a single record. The institution submits, and the review can begin.', status: 'Submitted', tone: 'accent' as const, evidence: 'Documents attached. Reference recorded.', icon: FileCheck2 },
+  { name: 'Scrutiny', short: 'Issues spotted', owner: 'Assigned officer', title: 'Spot the gap before it becomes a delay.', detail: 'Configured checks flag a shortfall in computer capacity. The officer reviews the evidence and raises a clear query.', status: 'Issue found', tone: 'warning' as const, evidence: 'Demo requirement: 120. Declared: 95.', icon: ScanSearch },
+  { name: 'Correction', short: 'Changes tracked', owner: 'Institution → officer', title: 'A correction, with the history intact.', detail: 'The institution submits revised evidence. The officer sees exactly what changed, with the earlier version still on record.', status: 'Clarification sent', tone: 'accent' as const, evidence: 'Version 2 received. Version 1 preserved.', icon: GitCompareArrows },
+  { name: 'Expert visit', short: 'People matched', owner: 'Visit coordinator', title: 'The right expertise, with conflicts checked.', detail: 'Where an Expert Visit Committee is required, the coordinator checks specialisation, conflicts, and availability before scheduling.', status: 'Panel checked', tone: 'primary' as const, evidence: 'Eligibility checked before assignment.', icon: Users },
+  { name: 'Decision', short: 'Outcome recorded', owner: 'Authorised officer', title: 'A decision you can trace back.', detail: 'The authorised officer records the outcome and reasons. Documents, reviews, and follow-up obligations remain connected.', status: 'Decision recorded', tone: 'success' as const, evidence: 'Outcome, reasons, and audit history retained.', icon: Fingerprint },
 ];
 
-export function LandingPage() {
-  const [step, setStep] = useState(0);
-  const reduce = useReducedMotion();
-  const current = JOURNEY[step];
-  useEffect(() => { document.title = 'AICASA · Approval workflows, clearly connected'; }, []);
-  return (
-    <div className="min-h-screen bg-surface text-ink">
-      <header className="border-b border-line"><div className="mx-auto flex min-h-20 max-w-7xl items-center justify-between gap-3 px-5 sm:px-8">
-        <Link to="/" aria-label="AICASA home" className="flex items-center gap-3"><Mark /><span className="text-lg font-semibold tracking-tight">AICASA</span></Link>
-        <div className="flex items-center gap-5"><Link003 className="hidden text-sm font-medium text-ink-soft hover:text-primary sm:flex" href="#journey">How it works</Link003><ButtonLink to="/sign-in">Sign in <ArrowRight className="h-4 w-4" aria-hidden /></ButtonLink></div>
-      </div></header>
-      <main>
-        <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:py-24">
-          <motion.div initial={reduce ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <p className="mb-6 flex items-center gap-2 text-sm font-medium text-accent"><span className="h-2 w-2 rounded-full bg-accent" />Connected approval management</p>
-            <h1 className="max-w-[20ch] text-4xl font-semibold leading-[1.1] tracking-[-0.035em] sm:text-5xl xl:text-6xl">Manage AICTE approval workflows <span className="text-primary">from submission to decision.</span></h1>
-            <p className="mt-7 max-w-xl text-lg leading-relaxed text-ink-soft">Track scrutiny, deficiencies, expert visits, compliance deadlines, and audit history in one secure workspace.</p>
-            <div className="mt-8 flex flex-wrap gap-3"><ButtonLink to="/sign-in" className="h-12 px-6">Open your workspace <ArrowRight className="h-4 w-4" aria-hidden /></ButtonLink><Link000 href="#journey" className="inline-flex min-h-12 items-center rounded-lg px-4 font-medium text-accent hover:bg-accent-soft">Explore the workflow ↓</Link000></div>
-            <p className="mt-6 max-w-lg text-sm leading-relaxed text-ink-soft">SIH26262 student prototype · synthetic data.<br />Not an official AICTE service. Decisions remain with authorised officers.</p>
-          </motion.div>
-          <motion.div initial={reduce ? false : { opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, delay: reduce ? 0 : 0.1 }} className="rounded-2xl border border-line bg-page p-5 shadow-lift sm:p-7">
-            <div className="flex items-center justify-between gap-3 border-b border-line pb-5"><span className="text-sm font-semibold">One application. A connected record.</span><GraduationCap className="h-6 w-6 shrink-0 text-primary" aria-hidden /></div>
-            <div className="my-6 rounded-xl border border-line bg-surface p-5"><p className="font-mono text-xs tracking-wide text-accent">ILLUSTRATIVE APPLICATION</p><h2 className="mt-2 text-xl font-semibold">Extension of approval</h2><p className="mt-2 text-sm text-ink-soft">Documents, reviews, decisions, and follow-up — together.</p></div>
-            <ol>{JOURNEY.map((s, i) => <li key={s.name} className="relative flex items-center gap-4 py-3">{i < 4 && <span className="absolute bottom-[-12px] left-[17px] top-10 w-px bg-line-strong" aria-hidden />}<span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-semibold text-primary">{i + 1}</span><span className="flex-1 text-sm font-semibold">{s.name}</span><span className="text-xs text-ink-soft">{s.owner}</span></li>)}</ol>
-          </motion.div>
-        </section>
-        <section id="journey" className="scroll-mt-6 border-y border-line bg-page px-5 py-16 sm:px-8"><div className="mx-auto max-w-7xl">
-          <p className="text-sm font-medium text-accent">Follow the work</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">Know what happens next.</h2><p className="mt-3 max-w-2xl leading-relaxed text-ink-soft">Explore an illustrative journey. Actual stages, corrections, and expert visits depend on the configured application route.</p>
-          <div className="mt-8 grid overflow-hidden rounded-2xl border border-line bg-surface shadow-card lg:grid-cols-[280px_1fr]">
-            <nav aria-label="Illustrative workflow stages" className="grid grid-cols-2 gap-2 border-b border-line bg-surface-muted/50 p-4 sm:grid-cols-5 lg:grid-cols-1 lg:border-b-0 lg:border-r">{JOURNEY.map((s, i) => <button key={s.name} onClick={() => setStep(i)} aria-pressed={step === i} className={`flex min-h-12 items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition-colors ${step === i ? 'bg-primary text-white shadow-card' : 'text-ink-soft hover:bg-primary-soft'}`}><span className="font-mono text-xs opacity-70">0{i + 1}</span>{s.name}{step === i && <ArrowRight className="ml-auto hidden h-4 w-4 lg:block" aria-hidden />}</button>)}</nav>
-            <div className="min-h-[360px] p-6 sm:p-10" aria-live="polite"><AnimatePresence mode="wait" initial={false}><motion.div key={step} initial={{ opacity: 0, y: reduce ? 0 : 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : 0.2 }}><current.icon className="mb-5 h-8 w-8 text-primary" aria-hidden /><p className="text-sm font-medium text-accent">{current.owner}</p><h3 className="mt-3 max-w-xl text-2xl font-semibold leading-snug sm:text-3xl">{current.title}</h3><p className="mt-4 max-w-2xl leading-relaxed text-ink-soft">{current.detail}</p><p className="mt-6 flex items-center gap-2 rounded-lg bg-success-soft px-4 py-3 text-sm text-success"><Check className="h-4 w-4 shrink-0" aria-hidden />{current.evidence}</p></motion.div></AnimatePresence><Button variant="link" className="mt-5" onClick={() => setStep((step + 1) % JOURNEY.length)}>{step === 4 ? 'Start again' : 'Next stage'} <ArrowRight className="h-4 w-4" aria-hidden /></Button></div>
-          </div>
-        </div></section>
-        <section className="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-8 md:grid-cols-3">{[
-          ['Institution workspace', 'Submit with clarity', 'Prepare applications, respond to deficiencies, and keep evidence and renewals on track.'],
-          ['Officer workspace', 'Review with context', 'See assigned work, compare document versions, and take the next permitted action.'],
-          ['Administrator workspace', 'See where work needs attention', 'Monitor deadlines, workload, and escalations across your permitted regions.'],
-        ].map(([role, title, detail]) => <div key={role} className="border-t-2 border-primary pt-6"><p className="text-sm font-medium text-accent">{role}</p><h2 className="mt-3 text-xl font-semibold">{title}</h2><p className="mt-3 leading-relaxed text-ink-soft">{detail}</p></div>)}</section>
-      </main>
-      <footer className="border-t border-line px-5 py-8 text-sm leading-relaxed text-ink-soft sm:px-8"><div className="mx-auto flex max-w-7xl flex-wrap justify-between gap-4"><p><strong className="font-semibold text-ink">AICASA</strong><br />AICTE Integrated Compliance and Approval System for Administration</p><p>SIH26262 · Demonstration build<br />Synthetic data. No live AICTE connection.</p></div></footer>
+function useLandingMotion() {
+  const [reduce, setReduce] = useState(() => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduce(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (reduce || !('IntersectionObserver' in window)) return;
+    const elements = document.querySelectorAll<HTMLElement>('.landing-page [data-reveal]');
+    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      }
+    }), { threshold: 0.08 });
+    elements.forEach((element) => { element.classList.add('will-reveal'); observer.observe(element); });
+    return () => { observer.disconnect(); elements.forEach((element) => element.classList.remove('will-reveal')); };
+  }, [reduce]);
+  return reduce;
+}
+
+function FileRow({ title, note, revised = false }: { title: string; note: string; revised?: boolean }) {
+  return <div className={cn('lp-file-row', revised && 'lp-file-row-revised')}>
+    <span className="lp-file-icon"><FileText size={18} aria-hidden /></span>
+    <span><strong>{title}</strong><small>{note}</small></span>
+    <CircleCheck size={17} className="text-success" aria-hidden />
+  </div>;
+}
+
+/** Illustrative views of the same application; all quantities are synthetic demo data. */
+function CaseEvidence({ step }: { step: number }) {
+  if (step === 0) return <div className="lp-paper">
+    <div className="lp-paper-heading"><span className="lp-micro">Application package</span><Badge tone="success">Ready for review</Badge></div>
+    <div className="lp-paper-title"><GraduationCap size={26} aria-hidden /><div><strong>Extension of approval</strong><span>Academic year 2027–28</span></div></div>
+    <div className="lp-document-list">
+      <FileRow title="Application form" note="Signed and submitted" />
+      <FileRow title="Infrastructure evidence" note="Computer inventory" />
+      <FileRow title="Faculty declaration" note="Declaration attached" />
     </div>
-  );
+    <div className="lp-paper-foot"><CheckCheck size={16} aria-hidden /> One record. All the evidence.</div>
+  </div>;
+
+  if (step === 1) return <div className="lp-paper">
+    <div className="lp-paper-heading"><span className="lp-micro">Automated pre-check</span><Badge tone="warning">1 issue found</Badge></div>
+    <p className="lp-evidence-title">Computer capacity</p>
+    <p className="lp-evidence-caption">Check against the configured demo rule</p>
+    <div className="lp-capacity-row"><span>Declared</span><strong>95 <small>computers</small></strong></div>
+    <div className="lp-bar-track"><span className="lp-bar-warning" style={{ width: '79.17%' }} /></div>
+    <div className="lp-capacity-row"><span>Required in this demo</span><strong>120</strong></div>
+    <div className="lp-bar-track"><span style={{ width: '100%' }} /></div>
+    <div className="lp-evidence-note lp-note-warning"><ScanSearch size={17} aria-hidden /><span><strong>25 computers below requirement</strong><small>Flagged for the officer to review.</small></span></div>
+  </div>;
+
+  if (step === 2) return <div className="lp-paper">
+    <div className="lp-paper-heading"><span className="lp-micro">Version comparison</span><Badge tone="accent">Change recorded</Badge></div>
+    <p className="lp-evidence-title">Computer inventory</p>
+    <div className="lp-compare">
+      <div><span>Previous declaration</span><strong>95</strong><small>Version 1 · retained</small></div>
+      <ArrowRight size={24} aria-hidden />
+      <div className="lp-compare-new"><span>Revised declaration</span><strong>120</strong><small>Version 2 · submitted</small></div>
+    </div>
+    <FileRow title="Updated inventory" note="New evidence ready for officer review" revised />
+    <div className="lp-paper-foot"><GitCompareArrows size={16} aria-hidden /> See the change. Keep the history.</div>
+  </div>;
+
+  if (step === 3) return <div className="lp-paper">
+    <div className="lp-paper-heading"><span className="lp-micro">Expert panel checks</span><Badge tone="primary">Illustrative panel</Badge></div>
+    <p className="lp-evidence-title">Expertise for this application</p>
+    <div className="lp-expert-list">
+      {['Computer engineering', 'Infrastructure review', 'Academic administration'].map((label, index) => <div className="lp-expert-row" key={label}><span className="lp-expert-avatar"><Users size={17} aria-hidden /></span><span><strong>{label}</strong><small>{index === 0 ? 'Specialisation matched' : 'Eligibility checked'}</small></span><Check size={16} className="text-success" aria-hidden /></div>)}
+    </div>
+    <div className="lp-paper-foot"><ShieldCheck size={16} aria-hidden /> Conflicts checked before assignment</div>
+  </div>;
+
+  return <div className="lp-paper lp-decision-paper">
+    <div className="lp-paper-heading"><span className="lp-micro">Decision record</span><Badge tone="success">Recorded</Badge></div>
+    <div className="lp-decision-mark"><Check size={34} strokeWidth={1.8} aria-hidden /></div>
+    <p className="lp-decision-title">Every outcome has a record.</p>
+    <p>Decision, reasons, and supporting evidence stay together.</p>
+    <div className="lp-decision-stamp"><Fingerprint size={18} aria-hidden /><span>RECORDED &amp; TRACEABLE</span></div>
+    <div className="lp-paper-foot">Decision made by the authorised officer</div>
+  </div>;
+}
+
+function Journey({ reduce }: { reduce: boolean }) {
+  const [step, setStep] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const [inView, setInView] = useState(true);
+  const [pageVisible, setPageVisible] = useState(true);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = JOURNEY[step];
+  const automatic = playing && !reduce && inView && pageVisible;
+  useEffect(() => {
+    const onVisibility = () => setPageVisible(!document.hidden);
+    onVisibility();
+    document.addEventListener('visibilitychange', onVisibility);
+    if (!ref.current || !('IntersectionObserver' in window)) return () => document.removeEventListener('visibilitychange', onVisibility);
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.2 });
+    observer.observe(ref.current);
+    return () => { observer.disconnect(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, []);
+  useEffect(() => {
+    if (!automatic) return;
+    const timer = window.setInterval(() => setStep((value) => (value + 1) % JOURNEY.length), JOURNEY_INTERVAL);
+    return () => window.clearInterval(timer);
+  }, [automatic]);
+  const select = (index: number) => { setPlaying(false); setStep(index); };
+
+  return <section id="journey" aria-labelledby="journey-heading" className="lp-journey lp-container" ref={ref}>
+    <div className="lp-preview-caption"><div><span className="lp-live-dot" aria-hidden /><h2 id="journey-heading">One application. The whole journey.</h2></div><span>Interactive preview · demo data</span></div>
+    <div className="lp-workspace" style={{ '--journey-duration': String(JOURNEY_INTERVAL) + 'ms' } as CSSProperties}>
+      <div className="lp-workspace-bar"><div><Layers3 size={17} aria-hidden /><span>AICASA <span className="lp-bar-divider">/</span> <strong>Application record</strong></span></div><span className="lp-reference">DEMO / 2027–0042</span></div>
+      <nav className="lp-stage-nav" aria-label="Application journey stages" onFocusCapture={() => setPlaying(false)}>
+        {JOURNEY.map((stage, index) => <button type="button" key={stage.name} onClick={() => select(index)} aria-label={stage.name + ': ' + stage.short} aria-pressed={step === index} aria-controls="journey-detail" className={cn('lp-stage', index === step && 'is-selected', index < step && 'is-past')}>
+          <span className="lp-stage-number">{index < step ? <Check size={15} aria-hidden /> : String(index + 1).padStart(2, '0')}</span>
+          <span className="lp-stage-label"><strong><span className="lp-stage-name">{stage.name}</span><span className="lp-stage-mobile">{['Submit', 'Review', 'Correct', 'Visit', 'Decision'][index]}</span></strong><small>{stage.short}</small></span>
+          {index < JOURNEY.length - 1 && <ChevronRight className="lp-stage-chevron" size={15} aria-hidden />}
+          {step === index && <span className={cn('lp-stage-progress', automatic && 'is-playing')} key={String(step) + String(automatic)} aria-hidden />}
+        </button>)}
+      </nav>
+      <div className="lp-case-body" id="journey-detail" aria-live={playing && !reduce ? 'off' : 'polite'} aria-atomic="true">
+        <div className="lp-evidence-scene"><div className="lp-paper-back lp-paper-back-one" aria-hidden /><div className="lp-paper-back lp-paper-back-two" aria-hidden /><div className="lp-evidence-content" key={step}><CaseEvidence step={step} /></div></div>
+        <div className="lp-case-copy">
+          <div className="lp-case-copy-inner" key={step}>
+            <div className="lp-case-step-label"><span className="lp-micro">Step {String(step + 1).padStart(2, '0')} / 05</span><Badge tone={current.tone}>{current.status}</Badge></div>
+            <h3>{current.title}</h3>
+            <p>{current.detail}</p>
+            <div className="lp-owner"><span className="lp-owner-icon"><current.icon size={19} aria-hidden /></span><div><small>Responsible at this stage</small><strong>{current.owner}</strong></div></div>
+          </div>
+          <div className="lp-case-controls"><Button variant="link" className="lp-next" onFocus={() => setPlaying(false)} onClick={() => select((step + 1) % JOURNEY.length)}>{step === 4 ? 'Start again' : 'Next stage'}<ArrowRight size={16} aria-hidden /></Button>
+            {!reduce && <button type="button" className="lp-play-toggle" onClick={() => setPlaying((value) => !value)} aria-label={playing ? 'Pause application journey' : 'Play application journey'}>{playing ? <Pause size={14} aria-hidden /> : <Play size={14} aria-hidden />}<span>{playing ? 'Pause' : 'Play'}</span></button>}
+          </div>
+        </div>
+      </div>
+      <div className="lp-workspace-foot"><span><ShieldCheck size={14} aria-hidden /> {current.evidence}</span><span>Illustrative route</span></div>
+    </div>
+    <p className="lp-preview-hint">Select any stage to explore. Actual steps depend on the application route.</p>
+  </section>;
+}
+
+function CorrectionVisual() {
+  return <div className="lp-feature-visual lp-correction-visual">
+    <div className="lp-mini-heading"><GitCompareArrows size={18} aria-hidden /><span>One query. A visible correction.</span><Badge tone="accent">Demo</Badge></div>
+    <div className="lp-correction-flow">
+      <div className="lp-change-record"><span className="lp-micro">Officer’s query</span><p>Computer capacity is below the configured requirement.</p><div className="lp-count-pair"><span><strong>95</strong>declared</span><span className="lp-count-separator">/</span><span><strong>120</strong>required</span></div></div>
+      <div className="lp-response-bridge"><span /><span><Clock3 size={14} aria-hidden /> 48-hour demo response window</span><span /></div>
+      <div className="lp-change-record lp-change-resolved"><div className="lp-change-heading"><span className="lp-micro">Institution’s clarification</span><CheckCheck size={18} aria-hidden /></div><p>Updated inventory submitted.</p><div className="lp-version-change"><span>95</span><ArrowRight size={18} aria-hidden /><strong>120 computers</strong><Badge tone="success">v2</Badge></div></div>
+    </div>
+    <p className="lp-visual-foot"><Fingerprint size={14} aria-hidden /> Previous version stays in the audit history</p>
+  </div>;
+}
+
+function ReviewVisual() {
+  return <div className="lp-feature-visual lp-review-visual">
+    <div className="lp-mini-heading"><Users size={18} aria-hidden /><span>The right people, the right checks.</span></div>
+    <div className="lp-routing-panel"><span className="lp-micro">Expert eligibility</span>
+      <div className="lp-routing-row"><span className="lp-routing-symbol is-eligible"><Check size={16} aria-hidden /></span><div><strong>Specialisation matches</strong><span>No declared conflict</span></div><span className="lp-routing-label">Eligible</span></div>
+      <div className="lp-routing-row"><span className="lp-routing-symbol"><X size={16} aria-hidden /></span><div><strong>Affiliated with the institution</strong><span>Reason visible to the coordinator</span></div><span className="lp-routing-label">Excluded</span></div>
+    </div>
+    <div className="lp-parallel-reviews"><span className="lp-micro">Required reviews, running together</span><div className="lp-review-lanes"><div><ShieldCheck size={20} aria-hidden /><strong>Scrutiny Committee</strong><span><Check size={13} aria-hidden /> Review complete</span></div><div><FileCheck2 size={20} aria-hidden /><strong>Central AICTE Desk</strong><span><Clock3 size={13} aria-hidden /> Review in progress</span></div></div></div>
+    <p className="lp-visual-foot"><Layers3 size={14} aria-hidden /> The next stage waits for all required reviews</p>
+  </div>;
+}
+
+export function LandingPage() {
+  const location = useLocation();
+  const reduce = useLandingMotion();
+  const openDemo = import.meta.env.VITE_OPEN_DEMO === 'true';
+  useEffect(() => { document.title = 'AICASA · AICTE approvals, clearly connected'; }, []);
+  useEffect(() => {
+    if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: reduce ? 'instant' : 'smooth', block: 'start' });
+  }, [location.key, location.hash, reduce]);
+
+  return <div className="landing-page">
+    <a href="#main-content" className="lp-skip-link">Skip to content</a>
+    <header className="lp-header"><div className="lp-container lp-header-inner">
+      <Link to="/" aria-label="AICASA home" className="lp-brand"><Mark /><span>AICASA<span className="lp-brand-caption">Approval workflows, connected.</span></span></Link>
+      <nav aria-label="Main navigation" className="lp-main-nav"><Link000 href="#journey" className="lp-nav-link">How it works</Link000><Link000 href="#features" className="lp-nav-link">Why AICASA</Link000><ButtonLink to="/sign-in" variant="secondary" className="lp-header-signin">Sign in<ArrowUpRight size={15} aria-hidden /></ButtonLink></nav>
+    </div></header>
+    <main id="main-content">
+      <section className="lp-intro lp-container" aria-labelledby="welcome-heading">
+        <p className="lp-eyebrow lp-entrance"><span className="lp-eyebrow-rule" />Built for the approval journey</p>
+        <h1 id="welcome-heading"><span>AICTE approvals.</span><span className="lp-headline-accent">A clear way forward.</span></h1>
+        <p className="lp-intro-description lp-entrance">From the first document to the final decision.<br className="lp-desktop-break" /> Bring applications, people, and every next step together.</p>
+        <div className="lp-hero-actions lp-entrance"><ButtonLink to="/sign-in" className="lp-primary-cta">Explore the demo<ArrowUpRight size={18} aria-hidden /></ButtonLink><Link000 href="#journey" className="lp-secondary-cta">See how it works<ArrowDown size={16} aria-hidden /></Link000></div>
+        <div className="lp-audience lp-entrance" aria-label="For institutions, officers, and administrators"><span><Building2 size={15} aria-hidden />Institutions</span><i aria-hidden /><span><ShieldCheck size={15} aria-hidden />Officers</span><i aria-hidden /><span><Users size={15} aria-hidden />Administrators</span></div>
+      </section>
+
+      <Journey reduce={reduce} />
+
+      <div className="lp-value-strip lp-container" data-reveal>
+        {[{ icon: Layers3, title: 'One shared record', text: 'Evidence, reviews, and decisions stay together.' }, { icon: Fingerprint, title: 'A history you can follow', text: 'Every version and recorded action has context.' }, { icon: ArrowRight, title: 'A clear next step', text: 'Know what is needed and who acts next.' }].map((item) => <div key={item.title}><item.icon size={21} aria-hidden /><div><h2>{item.title}</h2><p>{item.text}</p></div></div>)}
+      </div>
+
+      <section id="features" className="lp-features lp-container" aria-labelledby="features-heading">
+        <div className="lp-section-heading" data-reveal><p className="lp-eyebrow">Less chasing. More clarity.</p><h2 id="features-heading">The details make<br />the difference.</h2><p>See how AICASA connects the work between each stage.</p></div>
+        <article className="lp-feature-story" data-reveal>
+          <CorrectionVisual />
+          <div className="lp-feature-copy"><span className="lp-feature-category"><ScanSearch size={18} aria-hidden />Checks &amp; corrections</span><h3>Catch the gap.<br />Keep the progress.</h3><p>The dynamic deficiency matrix checks applications against configured Approval Process Handbook rules. Institutions get a clear query and a response window to put things right.</p><ul><li><Check size={16} aria-hidden /><span>Automatic checks bring missing requirements into view.</span></li><li><Check size={16} aria-hidden /><span>Version comparison shows the change for re-review.</span></li></ul><Link000 href="#journey" className="lp-story-link">Follow the correction journey<ArrowUpRight size={16} aria-hidden /></Link000></div>
+        </article>
+        <article className="lp-feature-story lp-feature-story-reverse" data-reveal>
+          <ReviewVisual />
+          <div className="lp-feature-copy"><span className="lp-feature-category"><Users size={18} aria-hidden />Experts &amp; review teams</span><h3>Move together.<br />Stay accountable.</h3><p>Expert recommendations check specialisation and conflicts. Role-based permissions let authorised teams review their sections in parallel, with ownership visible throughout.</p><ul><li><Check size={16} aria-hidden /><span>Same-district, affiliated, and declared conflicts are screened.</span></li><li><Check size={16} aria-hidden /><span>Every required review must finish before routing onward.</span></li></ul><Link000 href="#journey" className="lp-story-link">Explore the application journey<ArrowUpRight size={16} aria-hidden /></Link000></div>
+        </article>
+        <p className="lp-demo-rule-note">Examples use synthetic data and demonstration rules. Requirements and response times need verification before real use.</p>
+      </section>
+
+      <section className="lp-demo-section lp-container" data-reveal aria-labelledby="demo-heading"><div className="lp-demo-panel">
+        <div><p className="lp-eyebrow">Your next step</p><h2 id="demo-heading">See the whole workflow.<br />Try it for yourself.</h2><p>Explore the SIH26262 prototype through an institution,<br className="lp-desktop-break" /> officer, or administrator workspace.</p></div>
+        <div className="lp-demo-action"><ButtonLink to="/sign-in" className="lp-demo-button">Enter the demo workspace<ArrowUpRight size={18} aria-hidden /></ButtonLink><span>{openDemo ? 'Choose your demo role on the next screen.' : 'Sign in with your issued demo account.'}</span></div>
+      </div></section>
+    </main>
+    <footer className="lp-footer lp-container">
+      <div className="lp-footer-main"><div><Link to="/" className="lp-brand" aria-label="AICASA home"><Mark /><span>AICASA</span></Link><p>AICTE Integrated Compliance and Approval<br className="lp-desktop-break" /> System for Administration</p></div><nav aria-label="Footer navigation"><Link000 href="#journey">How it works</Link000><Link000 href="#features">Why AICASA</Link000><Link000 href="/sign-in">Sign in</Link000></nav></div>
+      <div className="lp-footer-meta"><p>SIH26262 student prototype · Synthetic data · Not an official AICTE service.</p><p>Link interactions by <a href="https://skiper-ui.com/v1/skiper40" target="_blank" rel="noreferrer">Skiper UI<ArrowUpRight size={12} aria-hidden /><span className="sr-only"> (opens in a new tab)</span></a></p></div>
+    </footer>
+  </div>;
 }

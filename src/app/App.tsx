@@ -18,6 +18,7 @@ import { NewApplicationPage } from '@/features/applications/NewApplicationPage';
 import { DocumentCentrePage, PrecheckPage } from '@/features/documents/DocumentCentrePage';
 import { DeficienciesPage } from '@/features/deficiencies/DeficienciesPage';
 import { EvcPage } from '@/features/evc/EvcPage';
+import { ExpertsPage } from '@/features/evc/ExpertsPage';
 import { CompliancePage } from '@/features/compliance/CompliancePage';
 import { ExpiryPage } from '@/features/compliance/ExpiryPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
@@ -89,6 +90,7 @@ const router = createBrowserRouter([
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'profile', element: <ProfilePage /> },
       { path: 'evc', element: S(<EvcPage />) },
+      { path: 'evc/experts', element: S(<ExpertsPage />) },
       { path: 'tasks', element: O(<TasksPage />) },
       { path: 'escalations', element: S(<EscalationsPage />) },
       { path: 'admin/workflows', element: A(<WorkflowsPage />) },

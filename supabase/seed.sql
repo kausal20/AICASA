@@ -205,12 +205,42 @@ insert into public.escalation_rules (code, version, rule_kind, entity_type, offs
   ('VALIDITY_EXPIRED_ESCALATION', 1, 'escalation', 'document_validity', 0, 'capability_officers', 'compliance', 'in_app', 2, 168, 'Demo internal target', 'Initial demo rule')
 on conflict do nothing;
 
-insert into public.institutions (code, name, kind, region_code, state, city, address, contact_email, is_demo) values
-  ('DEMO-WR-001', 'Nirmala Institute of Technology (Demo)', 'college', 'WR', 'Maharashtra', 'Pune', 'Plot 14, Demo Road, Pune', 'office@nirmala.demo.test', true),
-  ('DEMO-WR-002', 'Sahyadri College of Engineering (Demo)', 'college', 'WR', 'Maharashtra', 'Nashik', 'Survey 221, Demo Nagar, Nashik', 'office@sahyadri.demo.test', true),
-  ('DEMO-WR-003', 'Deccan Technical University (Demo)', 'university', 'WR', 'Maharashtra', 'Aurangabad', 'University Campus, Demo Marg', 'registrar@deccan.demo.test', true),
-  ('DEMO-SR-001', 'Coromandel Institute of Management (Demo)', 'standalone_institution', 'SR', 'Tamil Nadu', 'Chennai', '7 Demo Salai, Chennai', 'office@coromandel.demo.test', true)
+insert into public.institutions (code, name, kind, region_code, state, city, district, programmes, address, contact_email, is_demo) values
+  ('DEMO-WR-001', 'Nirmala Institute of Technology (Demo)', 'college', 'WR', 'Maharashtra', 'Pune', 'Pune', '{CSE,Mechanical,Civil}', 'Plot 14, Demo Road, Pune', 'office@nirmala.demo.test', true),
+  ('DEMO-WR-002', 'Sahyadri College of Engineering (Demo)', 'college', 'WR', 'Maharashtra', 'Nashik', 'Nashik', '{CSE,Mechanical,Civil}', 'Survey 221, Demo Nagar, Nashik', 'office@sahyadri.demo.test', true),
+  ('DEMO-WR-003', 'Deccan Technical University (Demo)', 'university', 'WR', 'Maharashtra', 'Aurangabad', 'Aurangabad', '{CSE,ECE,Pharmacy}', 'University Campus, Demo Marg', 'registrar@deccan.demo.test', true),
+  ('DEMO-SR-001', 'Coromandel Institute of Management (Demo)', 'standalone_institution', 'SR', 'Tamil Nadu', 'Chennai', 'Chennai', '{Management}', '7 Demo Salai, Chennai', 'office@coromandel.demo.test', true)
 on conflict (code) do nothing;
+
+-- Demo experts (synthetic people). Across four regions and six specializations. Three of them demonstrate the automatic exclusions
+-- for Sahyadri College (Nashik): same district (Anil Wagh), affiliated (Kavita Joshi), declared conflict (Rohan Deshmukh).
+insert into public.experts (code, full_name, specializations, home_district, home_state, home_institution_id, home_institution_name, region_code, is_demo)
+select v.code, v.full_name, v.specs, v.district, v.state, (select id from public.institutions where code = v.inst), v.inst_name, v.region, true
+from (values
+  ('DEMO-EXP-001', 'Dr. Anil Wagh (Demo)',          '{CSE,ECE}'::text[],        'Nashik',     'Maharashtra', null,          'Nashik Polytechnic (Demo)',        'WR'),
+  ('DEMO-EXP-002', 'Prof. Kavita Joshi (Demo)',     '{Mechanical}'::text[],     'Satara',     'Maharashtra', 'DEMO-WR-002', null,                               'WR'),
+  ('DEMO-EXP-003', 'Dr. Rohan Deshmukh (Demo)',     '{Civil}'::text[],          'Kolhapur',   'Maharashtra', null,          'Shivaji Technical Institute (Demo)', 'WR'),
+  ('DEMO-EXP-004', 'Dr. Lakshmi Narayanan (Demo)',  '{CSE}'::text[],            'Coimbatore', 'Tamil Nadu',  null,          'Kongu Engineering Forum (Demo)',   'SR'),
+  ('DEMO-EXP-005', 'Prof. Suresh Babu (Demo)',      '{Mechanical,Civil}'::text[], 'Madurai',   'Tamil Nadu',  null,          'Vaigai College of Technology (Demo)', 'SR'),
+  ('DEMO-EXP-006', 'Dr. Meenal Kapoor (Demo)',      '{Pharmacy}'::text[],       'Jaipur',     'Rajasthan',   null,          'Aravali Pharmacy Institute (Demo)', 'NR'),
+  ('DEMO-EXP-007', 'Dr. Farida Shaikh (Demo)',      '{CSE,Mechanical}'::text[], 'Nagpur',     'Maharashtra', null,          'Orange City Institute (Demo)',     'WR'),
+  ('DEMO-EXP-008', 'Prof. Sudipta Banerjee (Demo)', '{Civil,Management}'::text[], 'Kolkata',   'West Bengal', null,          'Hooghly Management School (Demo)', 'ER')
+) as v(code, full_name, specs, district, state, inst, inst_name, region)
+on conflict (code) do nothing;
+
+insert into public.expert_availability (expert_id, kind, starts_at, ends_at, note)
+select e.id, 'available', date_trunc('day', now()), date_trunc('day', now()) + interval '60 days', 'General availability for visits (demo)'
+from public.experts e where e.code in ('DEMO-EXP-004', 'DEMO-EXP-005', 'DEMO-EXP-007', 'DEMO-EXP-008')
+  and not exists (select 1 from public.expert_availability a where a.expert_id = e.id);
+insert into public.expert_availability (expert_id, kind, starts_at, ends_at, note)
+select e.id, 'unavailable', date_trunc('day', now()) + interval '10 days', date_trunc('day', now()) + interval '24 days', 'Examination duty (demo)'
+from public.experts e where e.code = 'DEMO-EXP-006'
+  and not exists (select 1 from public.expert_availability a where a.expert_id = e.id);
+
+insert into public.evc_conflict_declarations (expert_id, institution_id, nature)
+select e.id, i.id, 'Co-author with a Sahyadri trustee on a 2024 research project (demo declaration).'
+from public.experts e, public.institutions i where e.code = 'DEMO-EXP-003' and i.code = 'DEMO-WR-002'
+on conflict do nothing;
 
 insert into public.institution_access_grants (grantee_institution_id, target_institution_id, relationship, source_reference)
 select u.id, c.id, 'affiliation', 'Demo affiliation record — read-only grant'
@@ -314,6 +344,9 @@ begin
   alter table public.deficiency_submissions disable trigger deficiency_submissions_append_only;
   alter table public.deficiency_reviews disable trigger deficiency_reviews_append_only;
   alter table public.application_decisions disable trigger decisions_append_only;
+  alter table public.evc_reports disable trigger evc_reports_append_only;
+  update public.evc_reports set uploaded_at = uploaded_at - d where evc_id in (select id from public.evc_records where application_id = p_app);
+  alter table public.evc_reports enable trigger evc_reports_append_only;
   update public.applications set created_at = created_at - d, submitted_at = submitted_at - d, stage_entered_at = stage_entered_at - d,
     stage_due_at = stage_due_at - d, closed_at = closed_at - d, updated_at = updated_at - d where id = p_app;
   update public.application_events set created_at = created_at - d where application_id = p_app;
@@ -390,7 +423,7 @@ language plpgsql security definer set search_path = public, app, storage as $$
 declare
   a applications; r jsonb; d deficiencies; e evc_records; o compliance_obligations; v uuid; vv uuid;
   n2 uuid; n3 uuid; n4 uuid; s1 uuid; s2 uuid; s3 uuid; c1 uuid; c2 uuid; d1 uuid;
-  i_n uuid; i_s uuid; i_c uuid; i_d uuid; wr_evc uuid; sr uuid;
+  i_n uuid; i_s uuid; i_c uuid; i_d uuid; wr_evc uuid; sr uuid; v_report_path text;
 begin
   if coalesce(auth.role(), '') <> 'service_role' and session_user not in ('postgres', 'supabase_admin') then
     raise exception 'seed_demo_cases may only be run by the provisioning script';
@@ -525,6 +558,12 @@ begin
   update evc_records set scheduled_start = scheduled_start - interval '3 days', scheduled_end = scheduled_end - interval '3 days'
   where id = e.id;
   select * into e from evc_records where id = e.id;
+  -- the panel's inspection report, geo-tagged at the (synthetic) campus, must be on file before the session can be completed
+  v_report_path := e.id::text || '/' || gen_random_uuid()::text || '.pdf';
+  insert into storage.objects (bucket_id, name, metadata)
+  values ('evc-reports', v_report_path, jsonb_build_object('size', 48210, 'mimetype', 'application/pdf'));
+  perform register_evc_report(e.id, v_report_path, 'EVC_inspection_report_coromandel.pdf', null, 13.082700, 80.270700, 'manual', null,
+    'Synthetic demo report; coordinates are a placeholder in Chennai.');
   perform complete_evc(e.id, 'satisfactory', 'Panel reviewed facilities via live walkthrough; observations recorded as satisfactory (demo).', e.row_version);
 
   -- Coromandel C2: change of name under scrutiny (visible to Southern Region staff only)

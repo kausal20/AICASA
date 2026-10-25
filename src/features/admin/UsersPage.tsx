@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { UserPlus, Search } from 'lucide-react';
+import { UserPlus, Search, Users } from 'lucide-react';
+import { listExperts } from '@/services/experts';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { assignRole, listInstitutions, listRegions, listUsers, revokeRole, type UserRow } from '@/services/admin';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, PageHeader, Td, Th } from '@/components/ui/Page';
 import { Dialog } from '@/components/ui/Dialog';
@@ -64,9 +65,38 @@ export function UsersPage() {
           </DataTable>
         )}
       </Card>
+      <ExpertRegistry />
       {grant && <GrantDialog user={grant} onClose={() => setGrant(null)} />}
       {revoke && <RevokeDialog {...revoke} onClose={() => setRevoke(null)} />}
     </div>
+  );
+}
+
+/** Experts hold the "Expert" role for panel selection only. They have no sign-in access unless an account is granted above. */
+function ExpertRegistry() {
+  const q = useQuery({ queryKey: ['experts'], queryFn: listExperts });
+  const rows = q.data ?? [];
+  return (
+    <Card className="mt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+        <div>
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold"><Badge tone="accent">Expert</Badge>Expert registry</h2>
+          <p className="mt-0.5 text-[13px] text-ink-soft">People recommended for expert visit panels. Home district, employer and declared conflicts decide who is excluded for each institute.</p>
+        </div>
+        <ButtonLink to="/app/evc/experts" variant="secondary" icon={<Users className="h-4 w-4" />}>Manage experts</ButtonLink>
+      </div>
+      {q.isLoading ? <LoadingRows rows={2} /> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !rows.length ? <EmptyState title="No experts yet" /> : (
+        <ul className="divide-y divide-line">
+          {rows.slice(0, 8).map((e) => (
+            <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 text-[13px]">
+              <span><span className="font-medium">{e.full_name}</span> <span className="text-ink-soft">· {e.home_district}, {e.home_state}</span></span>
+              <span className="flex flex-wrap items-center gap-1.5"><Badge tone="accent">Expert · {e.region_code}</Badge>{e.specializations.map((s) => <Badge key={s} tone="primary">{s}</Badge>)}</span>
+            </li>
+          ))}
+          {rows.length > 8 && <li className="px-5 py-2.5 text-xs text-ink-soft">+{rows.length - 8} more in the registry</li>}
+        </ul>
+      )}
+    </Card>
   );
 }
 

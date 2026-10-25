@@ -91,7 +91,7 @@ export async function withdrawEvcAvailability(id: string, reason: string) {
 }
 
 export async function listEvcConflicts() {
-  return unwrap(await supabase.from('evc_conflict_declarations').select('*, institutions(name)').is('withdrawn_at', null)
+  return unwrap(await supabase.from('evc_conflict_declarations').select('*, institutions(name), experts(full_name)').is('withdrawn_at', null)
     .order('declared_at', { ascending: false })) as EvcConflictDeclaration[];
 }
 

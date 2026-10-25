@@ -250,3 +250,24 @@ none has been verified against the handbook. The cadre rule reads the intake fro
 A rule that is not met opens a deficiency on the case (`auto_generated`, citing the rule id and version) when the case is submitted or an officer
 presses **Re-check rules**; a re-check that finds the rule met, or the rule retired, resolves it. Opening needs the configured default correction period.
 Existing projects: apply `20261025000200` then `20261026000100`, then `node scripts/demo-matrix-cases.mjs` to add the two demo cases.
+
+## Expert panel routing (migration `20261028000100_expert_panel.sql`)
+
+**Experts.** A registry (`experts`) of synthetic demo experts with specialization tags, home district and state, home institution (or
+employer name), region and availability windows. Managed on **EVC → Experts**; summarised in Users and access with an *Expert* badge.
+An expert is not a sign-in role: an account is optional and linked through `experts.profile_id`.
+
+**Recommend panel.** On a case's EVC tab, `expert_match_inputs` returns raw facts and the matcher in `src/lib/expertMatch.ts` ranks
+eligible experts by specialization match to the institute's programmes (plus tags read from the application), then region proximity
+(same, neighbouring, other; the neighbour map is demo configuration). Three automatic hard exclusions, each shown with its reason and
+needing no declaration: *same district as institute*, *declared conflict*, *affiliated with this institute*. Declarations made with the
+existing self-declaration feature (officers) and the new expert declarations both feed the exclusion. `assign_evc_expert` re-checks the
+same rules on the server, so an excluded expert cannot be added whatever the browser sends.
+
+**Geo-tagged reports.** A panel member uploads the inspection report (PDF, private bucket `evc-reports`) against a confirmed session
+that has started. The server stamps `uploaded_at`; the geo-tag comes from browser geolocation with a manual-entry fallback and is
+stored with its source. Both are shown on the EVC tab and the case timeline (internal). `complete_evc` refuses until at least one report
+exists. Reports are append-only and not visible to the institution.
+
+Limitations: no external register of affiliations or home addresses is connected, so a conflict is caught only through the three
+recorded facts above; the geo-tag proves where the uploader's device (or typed value) said it was, not that the inspection took place there.

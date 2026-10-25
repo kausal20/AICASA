@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  AlertTriangle, ArrowRight, CalendarCheck, CheckCircle2, Copy, Eye, FilePen, FileText, Gavel, Info, MessageSquarePlus, RotateCcw,
+  AlertTriangle, ArrowRight, CalendarCheck, CheckCircle2, Copy, Eye, FilePen, FileText, Gavel, Info, MapPin, MessageSquarePlus, RotateCcw,
   Route as RouteIcon, Send, ShieldAlert, Siren, Sparkles, UserCog, UserRound, Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,7 +13,10 @@ import {
   getObservations, getRequirements, getRoute, getStageHistory, performTransition, reassignApplication,
 } from '@/services/applications';
 import { listDocuments } from '@/services/documents';
-import { listDeficiencies, listEvc, raiseDeficiency, returnForCorrection, getEvcHistory } from '@/services/operations';
+import { listDeficiencies, listEvc, raiseDeficiency, returnForCorrection, getEvcHistory, getEvcParticipants } from '@/services/operations';
+import { listEvcPanelExperts } from '@/services/experts';
+import { RecommendPanelDialog } from '@/features/evc/RecommendPanel';
+import { EvcReports, ReportStamp } from '@/features/evc/EvcReports';
 import { listAuditForApplication } from '@/services/admin';
 import { WorkflowTracker } from './WorkflowTracker';
 import { Button, ButtonLink } from '@/components/ui/Button';
@@ -368,6 +371,7 @@ const EVENT_ICON: Record<string, { icon: typeof Send; tone: string }> = {
   document_uploaded: { icon: FileText, tone: 'bg-surface-muted text-ink-soft' },
   document_replaced: { icon: FileText, tone: 'bg-surface-muted text-ink-soft' },
   escalated: { icon: Siren, tone: 'bg-danger-soft text-danger' },
+  evc_report_uploaded: { icon: MapPin, tone: 'bg-success-soft text-success' },
   observation: { icon: MessageSquarePlus, tone: 'bg-surface-muted text-ink-soft' },
 };
 
@@ -394,6 +398,9 @@ function TimelineList({ events, loading, name, compact }: { events?: AppEvent[];
                     <p className="text-[13.5px] font-medium text-ink">{e.summary}{e.visibility === 'internal' && <Badge tone="neutral" className="ml-2">Internal</Badge>}</p>
                     <p className="text-xs text-ink-soft">{compact ? fmtDateTime(e.created_at) : fmtDateTime(e.created_at).split(', ').pop()} · {e.actor_kind === 'system' ? 'Automatic (configured rule)' : name(e.actor_id)}
                       {e.from_stage && e.to_stage && e.from_stage !== e.to_stage && <> · {humanize(e.from_stage)} → {humanize(e.to_stage)}</>}</p>
+                    {e.event_type === 'evc_report_uploaded' && typeof e.metadata?.latitude === 'number' && typeof e.metadata?.longitude === 'number' && (
+                      <p className="mt-1"><ReportStamp at={e.created_at} lat={e.metadata.latitude} lng={e.metadata.longitude} source={String(e.metadata.geo_source ?? '')} /></p>
+                    )}
                     {e.reason && <p className="mt-1.5 rounded-lg bg-surface-muted px-3 py-2 text-[13px] text-ink-soft">{e.reason}</p>}
                   </div>
                 </motion.li>
@@ -413,9 +420,20 @@ function EvcTab({ rows, loading, name }: { rows?: EvcRow[]; loading: boolean; na
 }
 
 function EvcRecordCard({ e, name }: { e: EvcRow; name: (id: string | null) => string }) {
+  const { session, workspace, can } = useAuth();
   const hist = useQuery({ queryKey: ['evc', e.id, 'history'], queryFn: () => getEvcHistory(e.id) });
+  const people = useQuery({ queryKey: ['evc', e.id, 'participants'], queryFn: () => getEvcParticipants(e.id) });
+  const experts = useQuery({ queryKey: ['evc-panel', e.id], queryFn: () => listEvcPanelExperts(e.id), enabled: workspace !== 'institution' });
+  const [recommend, setRecommend] = useState(false);
+  const staff = workspace === 'officer' || workspace === 'admin';
+  const open = ['awaiting_scheduling', 'proposed', 'scheduled'].includes(e.status);
+  const canAssign = workspace === 'officer' && can('evc') && open;
+  const isMember = !!people.data?.some((p) => p.user_id === session?.user.id);
+  const started = !!e.scheduled_start && new Date(e.scheduled_start) <= new Date();
   return (
-    <Panel title={`EVC cycle ${e.cycle}`} description={e.coordinator_name ? `Coordinator: ${e.coordinator_name}` : 'Coordinator not yet assigned'} action={<StatusBadge status={e.status} />}>
+    <Panel title={`EVC cycle ${e.cycle}`} description={e.coordinator_name ? `Coordinator: ${e.coordinator_name}` : 'Coordinator not yet assigned'}
+      action={<div className="flex items-center gap-2">{staff && open && <Button size="sm" variant="secondary" icon={<Sparkles className="h-3.5 w-3.5" />} onClick={() => setRecommend(true)}>Recommend panel</Button>}<StatusBadge status={e.status} /></div>}>
+      {recommend && <RecommendPanelDialog evcId={e.id} version={e.row_version} canAssign={canAssign} onClose={() => setRecommend(false)} />}
       <div className="px-5 py-4">
         <KeyValue items={[
           { label: 'Queued', value: fmtDateTime(e.ready_at) },
@@ -424,6 +442,18 @@ function EvcRecordCard({ e, name }: { e: EvcRow; name: (id: string | null) => st
           { label: 'Reschedules', value: e.reschedule_count },
         ]} />
         {e.completion_summary && <p className="mt-3 rounded-lg bg-surface-muted px-3 py-2 text-[13px]">{e.completion_summary}</p>}
+        {staff && (
+          <div className="mt-4 border-t border-line pt-4" aria-label="Expert panel">
+            <h3 className="text-[13px] font-semibold">Experts on the panel</h3>
+            {!experts.data?.length ? <p className="mt-1 text-[13px] text-ink-soft">No expert added yet. Use Recommend panel to see eligible experts; anyone with a conflict of interest is excluded automatically.</p> : (
+              <ul className="mt-2 flex flex-wrap gap-2">{experts.data.map((x) => (
+                <li key={x.expert_id} className="rounded-lg border border-line px-3 py-1.5 text-[13px]"><span className="font-medium">{x.experts?.full_name ?? 'Expert'}</span>
+                  <span className="ml-2 text-xs text-ink-soft">{x.experts?.specializations.join(', ')} · {x.experts?.region_code}</span></li>
+              ))}</ul>
+            )}
+          </div>
+        )}
+        {staff && ['scheduled', 'completed'].includes(e.status) && <EvcReports evcId={e.id} canUpload={isMember} hasStarted={started} status={e.status} />}
         {hist.data && (
           <ol className="mt-4 space-y-1 border-t border-line pt-3 text-xs text-ink-soft">
             {hist.data.map((h) => <li key={h.id}><span className="font-medium text-ink">{humanize(h.action)}</span> · {fmtDateTime(h.created_at)} · {name(h.actor_id)}{h.reason ? ` · ${h.reason}` : ''}</li>)}

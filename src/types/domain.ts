@@ -225,7 +225,7 @@ export interface EvcCheckReason { code: string; status: CheckStatus; overridable
 export interface EvcPersonCheck { user_id: string; name: string; status: 'eligible' | 'manual_review' | 'blocked'; overridable: boolean; reasons: EvcCheckReason[] }
 export interface EvcAssignmentCheck { readiness: EvcCheckReason[]; people: EvcPersonCheck[]; policy: Record<string, unknown> | null; blocked: boolean; needs_override: boolean }
 export interface EvcAvailability { id: string; user_id: string; starts_at: string; ends_at: string; kind: 'available' | 'unavailable'; note: string | null; withdrawn_at: string | null; created_at: string }
-export interface EvcConflictDeclaration { id: string; user_id: string; institution_id: string; nature: string; declared_at: string; withdrawn_at: string | null; institutions?: { name: string } | null }
+export interface EvcConflictDeclaration { id: string; user_id: string | null; expert_id: string | null; institution_id: string; nature: string; declared_at: string; withdrawn_at: string | null; institutions?: { name: string } | null; experts?: { full_name: string } | null }
 
 // ---- Document version comparison -----------------------------------------
 export interface VersionMeta { id: string; version: number; file_name: string; mime_type: string; size_bytes: number; sha256: string | null; uploaded_at: string; replaced_reason: string | null }
@@ -233,4 +233,19 @@ export interface VersionComparison {
   document: { id: string; title: string; doc_type: string }; old: VersionMeta; new: VersionMeta; identical_file: boolean;
   metadata_changes: { field: string; old: string | number; new: string | number }[];
   content: { available: boolean; reason: string | null; text_available: boolean; text_reason: string | null; old_text: string | null; new_text: string | null; fields: { check_code: string; label: string; old: string | null; new: string | null; old_outcome: string | null; new_outcome: string | null; changed: boolean }[] };
+}
+
+// ---- Expert panel -----------------------------------------------------------
+export interface Expert {
+  id: string; code: string | null; full_name: string; specializations: string[]; home_district: string; home_state: string;
+  home_institution_id: string | null; home_institution_name: string | null; region_code: string; profile_id: string | null;
+  is_active: boolean; is_demo: boolean; created_at: string; institutions?: { name: string } | null;
+}
+export interface ExpertAvailability { id: string; expert_id: string; kind: 'available' | 'unavailable'; starts_at: string; ends_at: string; note: string | null; withdrawn_at: string | null }
+export interface EvcPanelExpert { evc_id: string; expert_id: string; assigned_at: string; experts?: Pick<Expert, 'id' | 'full_name' | 'specializations' | 'region_code' | 'home_district'> | null }
+/** Server time-stamped, geo-tagged inspection report uploaded against an EVC session. */
+export interface EvcReport {
+  id: string; evc_id: string; uploaded_by: string; file_name: string; storage_path: string; size_bytes: number; sha256: string | null;
+  latitude: number | string; longitude: number | string; geo_source: 'browser' | 'manual'; geo_accuracy_m: number | string | null;
+  note: string | null; uploaded_at: string;
 }

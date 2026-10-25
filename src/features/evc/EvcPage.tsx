@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarClock, CalendarX2, ClipboardCheck, AlertTriangle, CalendarRange, ShieldAlert } from 'lucide-react';
+import { CalendarClock, CalendarX2, ClipboardCheck, AlertTriangle, CalendarRange, MapPin, ShieldAlert, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
@@ -9,11 +9,12 @@ import {
   recordEvcAvailability, scheduleEvc, withdrawEvcAvailability, withdrawEvcConflict,
 } from '@/services/operations';
 import { listInstitutions } from '@/services/admin';
+import { declareExpertConflict, listEvcReports, listExperts } from '@/services/experts';
 import { EvcCheckView } from './EvcChecks';
 import { getDirectory } from '@/services/applications';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { DueBadge, StatusBadge } from '@/components/ui/Badge';
+import { Button, ButtonLink } from '@/components/ui/Button';
+import { Badge, DueBadge, StatusBadge } from '@/components/ui/Badge';
 import { DataTable, PageHeader, Stat, Tabs, Td, Th } from '@/components/ui/Page';
 import { Dialog } from '@/components/ui/Dialog';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
@@ -35,6 +36,8 @@ export function EvcPage() {
   const overdueOnly = sp.get('overdue') === '1';
   const q = useQuery({ queryKey: ['evc', 'all'], queryFn: () => listEvc() });
   const [dialog, setDialog] = useState<{ kind: 'schedule' | 'complete' | 'cancel'; row: EvcRow } | null>(null);
+  const reports = useQuery({ queryKey: ['evc-reports', 'all'], queryFn: () => listEvcReports() });
+  const reportCount = (id: string) => (reports.data ?? []).filter((r) => r.evc_id === id).length;
   const rows = q.data ?? [];
   const count = (k: string) => rows.filter((r) => GROUPS[k].includes(r.status)).length;
   const list = overdueOnly ? rows.filter((r) => r.is_overdue) : rows.filter((r) => (GROUPS[tab] ?? []).includes(r.status));
@@ -42,6 +45,7 @@ export function EvcPage() {
   return (
     <div>
       <PageHeader title={workspace === 'admin' ? 'EVC overview' : 'EVC scheduling'}
+        actions={<ButtonLink to="/app/evc/experts" variant="secondary" icon={<Users className="h-4 w-4" />}>Experts</ButtonLink>}
         description="Applications enter this queue only when their configured route reaches an expert-visit stage and its prerequisites are met. Scheduling here is internal; no external calendar is connected." />
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Awaiting scheduling" value={count('queue')} tone={count('queue') ? 'warning' : 'neutral'} />
@@ -66,7 +70,10 @@ export function EvcPage() {
                     <Td><Link to={`/app/applications/${r.application_id}`} className="font-medium text-accent hover:underline">{r.reference}</Link>
                       <p className="max-w-[260px] truncate text-xs text-ink-soft">{r.institution_name} · cycle {r.cycle}</p></Td>
                     <Td><StatusBadge status={r.status} />{r.is_overdue && <p className="mt-1 flex items-center gap-1 text-xs text-danger"><AlertTriangle className="h-3 w-3" />Overdue</p>}
-                      {r.outcome && <p className="mt-1 text-xs text-ink-soft">{humanize(r.outcome)}</p>}</Td>
+                      {r.outcome && <p className="mt-1 text-xs text-ink-soft">{humanize(r.outcome)}</p>}
+                      {['scheduled', 'completed'].includes(r.status) && (reportCount(r.id) > 0
+                        ? <p className="mt-1 flex items-center gap-1 text-xs text-success"><MapPin className="h-3 w-3" aria-hidden />{reportCount(r.id)} geo-tagged report{reportCount(r.id) > 1 ? 's' : ''}</p>
+                        : r.status === 'scheduled' && <p className="mt-1 text-xs text-ink-soft">No report uploaded</p>)}</Td>
                     <Td>{r.status === 'awaiting_scheduling' ? <DueBadge due={r.schedule_due_at} /> : r.scheduled_start ? <span className="text-[13px] tabular">{fmtDateTime(r.scheduled_start)}</span> : '—'}
                       {r.reschedule_count > 0 && <p className="text-xs text-ink-soft">Rescheduled {r.reschedule_count}×</p>}</Td>
                     <Td className="text-[13px]">{r.coordinator_name ?? '—'}</Td>
@@ -75,7 +82,7 @@ export function EvcPage() {
                       {canAct && (
                         <div className="flex justify-end gap-1.5">
                           {['awaiting_scheduling', 'proposed', 'scheduled'].includes(r.status) && <Button size="sm" variant="secondary" icon={<CalendarClock className="h-3.5 w-3.5" />} onClick={() => setDialog({ kind: 'schedule', row: r })}>{r.status === 'awaiting_scheduling' ? 'Schedule' : r.status === 'proposed' ? 'Confirm / change' : 'Reschedule'}</Button>}
-                          {r.status === 'scheduled' && <Button size="sm" icon={<ClipboardCheck className="h-3.5 w-3.5" />} disabled={!!r.scheduled_start && new Date(r.scheduled_start) > new Date()} title={r.scheduled_start && new Date(r.scheduled_start) > new Date() ? 'Available once the session has started' : undefined} onClick={() => setDialog({ kind: 'complete', row: r })}>Record outcome</Button>}
+                          {r.status === 'scheduled' && <Button size="sm" icon={<ClipboardCheck className="h-3.5 w-3.5" />} disabled={(!!r.scheduled_start && new Date(r.scheduled_start) > new Date()) || reportCount(r.id) === 0} title={r.scheduled_start && new Date(r.scheduled_start) > new Date() ? 'Available once the session has started' : reportCount(r.id) === 0 ? 'Upload the inspection report, with its geo-tag, on the case EVC tab first' : undefined} onClick={() => setDialog({ kind: 'complete', row: r })}>Record outcome</Button>}
                           {['proposed', 'scheduled'].includes(r.status) && <Button size="sm" variant="ghost" icon={<CalendarX2 className="h-3.5 w-3.5" />} onClick={() => setDialog({ kind: 'cancel', row: r })}>Cancel</Button>}
                         </div>
                       )}
@@ -190,8 +197,10 @@ function AvailabilityTab() {
   const addAvail = useAction(() => recordEvcAvailability({ userId: a.userId, kind: a.kind, start: localDateTimeToIso(a.start), end: localDateTimeToIso(a.end), note: a.note }), {
     success: 'Availability recorded.', invalidate: [['evc-availability'], ['evc-check']], onSuccess: () => setA({ ...a, start: '', end: '', note: '' }) });
   const withdrawAvail = useAction((id: string) => withdrawEvcAvailability(id, 'Withdrawn from the EVC availability list'), { success: 'Withdrawn.', invalidate: [['evc-availability'], ['evc-check']] });
-  const declare = useAction(() => declareEvcConflict(c.userId, c.institutionId, c.nature), {
-    success: 'Conflict of interest recorded.', invalidate: [['evc-conflicts'], ['evc-check']], onSuccess: () => setC({ ...c, institutionId: '', nature: '' }) });
+  const experts = useQuery({ queryKey: ['experts'], queryFn: listExperts, enabled: mayEdit });
+  // "e:<id>" is an expert from the registry, anything else an officer; both feed the automatic exclusions of the panel recommender
+  const declare = useAction(() => c.userId.startsWith('e:') ? declareExpertConflict(c.userId.slice(2), c.institutionId, c.nature) : declareEvcConflict(c.userId, c.institutionId, c.nature), {
+    success: 'Conflict of interest recorded.', invalidate: [['evc-conflicts'], ['evc-check'], ['expert-match'], ['experts']], onSuccess: () => setC({ ...c, institutionId: '', nature: '' }) });
   const [withdrawing, setWithdrawing] = useState<{ id: string; reason: string } | null>(null);
   const withdrawConflict = useAction(() => withdrawEvcConflict(withdrawing!.id, withdrawing!.reason), {
     success: 'Declaration withdrawn.', invalidate: [['evc-conflicts'], ['evc-check']], onSuccess: () => setWithdrawing(null) });
@@ -232,7 +241,7 @@ function AvailabilityTab() {
       <Card>
         <div className="border-b border-line px-5 py-3.5">
           <h2 className="flex items-center gap-2 text-[15px] font-semibold"><ShieldAlert className="h-4 w-4 text-primary" aria-hidden />Declared conflicts of interest</h2>
-          <p className="mt-0.5 text-[13px] text-ink-soft">Only declared conflicts are known. No affiliation register is connected, so undeclared relationships cannot be detected.</p>
+          <p className="mt-0.5 text-[13px] text-ink-soft">Declarations by or for officers and experts feed the panel recommender. Separately, an expert from the institute&rsquo;s district or employed by it is excluded automatically, with no declaration needed. No wider affiliation register is connected, so other undeclared relationships cannot be detected.</p>
         </div>
         {conflicts.isLoading ? <LoadingRows rows={3} /> : conflicts.error ? <ErrorState error={conflicts.error} onRetry={() => conflicts.refetch()} /> : !conflicts.data?.length ? (
           <EmptyState title="No conflicts declared" />
@@ -240,7 +249,7 @@ function AvailabilityTab() {
           <ul className="divide-y divide-line">{conflicts.data.map((d) => (
             <li key={d.id} className="px-5 py-2.5 text-[13px]">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span><span className="font-medium">{name(d.user_id)}</span> · {d.institutions?.name ?? 'Institution'}</span>
+                <span><span className="font-medium">{d.experts?.full_name ?? name(d.user_id ?? '')}</span>{d.expert_id && <Badge tone="accent" className="ml-1.5">Expert</Badge>} · {d.institutions?.name ?? 'Institution'}</span>
                 {can('assignment') && d.user_id !== me && <Button size="sm" variant="ghost" onClick={() => setWithdrawing({ id: d.id, reason: '' })}>Withdraw</Button>}
               </div>
               <p className="text-xs text-ink-soft">{d.nature} · declared {fmtDateTime(d.declared_at)}</p>
@@ -249,8 +258,9 @@ function AvailabilityTab() {
         )}
         {mayEdit && (
           <form className="grid gap-3 border-t border-line px-5 py-4 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); declare.mutate(undefined); }}>
-            <SelectField label="Officer" value={c.userId} onChange={(e) => setC({ ...c, userId: e.target.value })}>
-              {choosable.map((id) => <option key={id} value={id}>{name(id)}{id === me ? ' (you)' : ''}</option>)}
+            <SelectField label="Officer or expert" value={c.userId} onChange={(e) => setC({ ...c, userId: e.target.value })}>
+              <optgroup label="Officers">{choosable.map((id) => <option key={id} value={id}>{name(id)}{id === me ? ' (you)' : ''}</option>)}</optgroup>
+              {!!experts.data?.length && <optgroup label="Experts">{experts.data.filter((x) => x.is_active).map((x) => <option key={x.id} value={`e:${x.id}`}>{x.full_name}</option>)}</optgroup>}
             </SelectField>
             <SelectField label="Institution" required value={c.institutionId} onChange={(e) => setC({ ...c, institutionId: e.target.value })}>
               <option value="">Select</option>

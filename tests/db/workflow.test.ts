@@ -263,11 +263,15 @@ describe('EVC', () => {
 
     await t.owner(`update evc_records set scheduled_start = now() - interval '3 hours', scheduled_end = now() - interval '1 hour' where id = $1`, [evc.id]);
     await expectSqlError(t.as(EVC, `select complete_evc($1, 'satisfactory', 'too short', $2)`, [evc.id, s[0].r.evc.row_version]), /at least 20/);
+    await expectSqlError(t.as(EVC, `select complete_evc($1, 'satisfactory', 'Panel verified laboratories and classrooms online.', $2)`, [evc.id, s[0].r.evc.row_version]), /inspection report/);
+    const reportPath = `${evc.id}/${crypto.randomUUID()}.pdf`;
+    await t.owner(`insert into storage.objects (bucket_id, name, metadata) values ('evc-reports', $1, $2)`, [reportPath, JSON.stringify({ size: 4096, mimetype: 'application/pdf' })]);
+    await t.as(EVC, `select register_evc_report($1, $2, 'inspection.pdf', null, 18.5204, 73.8567, 'manual')`, [evc.id, reportPath]);
     await t.as(EVC, `select complete_evc($1, 'satisfactory', 'Panel verified laboratories and classrooms online.', $2)`, [evc.id, s[0].r.evc.row_version]);
     const a = await t.owner<{ current_stage: string }>(`select current_stage from applications where id = $1`, [n2.id]);
     expect(a[0].current_stage).toBe('decision');
     const hist = await t.owner<{ action: string }>(`select action from evc_history where evc_id = $1 order by created_at`, [evc.id]);
-    expect(hist.map((h) => h.action)).toEqual(['queued', 'confirmed', 'completed']);
+    expect(hist.map((h) => h.action)).toEqual(['queued', 'confirmed', 'report_uploaded', 'completed']);
   });
 
   it('reports overlapping panel schedules as conflicts', async () => {

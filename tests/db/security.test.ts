@@ -177,9 +177,18 @@ describe('storage policies', () => {
   });
 
   it('reads are limited to institutions the caller may see', async () => {
-    const rows = await t.as<{ name: string }>('inst.coromandel@aicasa-demo.test', `select name from storage.objects`);
+    const rows = await t.as<{ name: string }>('inst.coromandel@aicasa-demo.test', `select name from storage.objects where bucket_id = 'institution-documents'`);
     expect(rows.every((r) => r.name.startsWith(ids['DEMO-SR-001']))).toBe(true);
-    const officer = await t.as<{ name: string }>('officer.sr@aicasa-demo.test', `select name from storage.objects`);
+    const officer = await t.as<{ name: string }>('officer.sr@aicasa-demo.test', `select name from storage.objects where bucket_id = 'institution-documents'`);
     expect(officer.every((r) => r.name.startsWith(ids['DEMO-SR-001']))).toBe(true);
+  });
+
+  it('EVC inspection reports are internal: the institution cannot read them, the panel and regional staff can', async () => {
+    const inst = await t.as<{ name: string }>('inst.coromandel@aicasa-demo.test', `select name from storage.objects where bucket_id = 'evc-reports'`);
+    expect(inst).toHaveLength(0);
+    const officer = await t.as<{ name: string }>('officer.sr@aicasa-demo.test', `select name from storage.objects where bucket_id = 'evc-reports'`);
+    expect(officer.length).toBeGreaterThan(0);
+    const otherRegion = await t.as<{ name: string }>('officer.wr.scrutiny@aicasa-demo.test', `select name from storage.objects where bucket_id = 'evc-reports'`);
+    expect(otherRegion).toHaveLength(0);
   });
 });

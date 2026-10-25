@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     const { error: doneErr } = await admin.rpc('complete_document_check', {
       p_run_id: run.id, p_engine: result.engine, p_status: result.status, p_extraction_status: result.extraction_status,
       p_extraction_method: result.extraction_method, p_steps: result.steps, p_limitations: result.limitations,
-      p_summary: result.summary, p_findings: result.findings, p_error: null,
+      p_summary: result.summary, p_findings: result.findings, p_error: null, p_extracted_text: result.extracted_text,
     });
     if (doneErr) return json({ error: doneErr.message }, 500);
     return json({ run_id: run.id, status: result.status, summary: result.summary });

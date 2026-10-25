@@ -17,7 +17,7 @@ export const NAV: Record<Role, NavGroup[]> = {
         { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
         { to: '/app/applications', label: 'Applications', icon: FileStack },
         { to: '/app/applications/new', label: 'New application', icon: FilePlus2 },
-        { to: '/app/deficiencies', label: 'Deficiencies', icon: ShieldAlert, badge: 'returned', badgeTone: 'warning' },
+        { to: '/app/deficiencies', label: 'Query & Clarification', icon: ShieldAlert, badge: 'returned', badgeTone: 'warning' },
       ],
     },
     {
@@ -45,7 +45,7 @@ export const NAV: Record<Role, NavGroup[]> = {
         { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
         { to: '/app/queue', label: 'My application queue', icon: Inbox },
         { to: '/app/tasks', label: 'Tasks & deadlines', icon: ListTodo, badge: 'tasksOverdue', badgeTone: 'danger' },
-        { to: '/app/deficiencies', label: 'Correction reviews', icon: ShieldAlert, badge: 'corrections', badgeTone: 'warning' },
+        { to: '/app/deficiencies', label: 'Clarification reviews', icon: ShieldAlert, badge: 'corrections', badgeTone: 'warning' },
       ],
     },
     {

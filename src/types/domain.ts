@@ -106,7 +106,11 @@ export type DeficiencyStatus = 'open' | 'correction_submitted' | 'still_deficien
 export interface Deficiency {
   id: string; application_id: string; stage_code: string; title: string; reason: string; requirement_source: string;
   requested_correction: string; doc_type: string | null; responsible_party: string; due_at: string; status: DeficiencyStatus;
-  raised_by: string; raised_at: string; resolved_at: string | null; row_version: number;
+  raised_by: string | null; raised_at: string; resolved_at: string | null; row_version: number;
+  /** Raised by a Deficiency Matrix rule (no officer), citing the rule id and version */
+  /** Response window of an officer-raised query; null for rule-raised and older deficiencies */
+  window_opens_at: string | null; window_closes_at: string | null; window_reopen_count: number;
+  auto_generated: boolean; rule_id: string | null; rule_code: string | null; rule_version: number | null;
   affected_document_version_id: string | null;
   /** captured_at_raise = recorded when the memo was raised; inferred_unverified = reconstructed later and not proven; null = none */
   affected_version_basis: 'captured_at_raise' | 'inferred_unverified' | null;
@@ -228,5 +232,5 @@ export interface VersionMeta { id: string; version: number; file_name: string; m
 export interface VersionComparison {
   document: { id: string; title: string; doc_type: string }; old: VersionMeta; new: VersionMeta; identical_file: boolean;
   metadata_changes: { field: string; old: string | number; new: string | number }[];
-  content: { available: boolean; reason: string | null; fields: { check_code: string; label: string; old: string | null; new: string | null; old_outcome: string | null; new_outcome: string | null; changed: boolean }[] };
+  content: { available: boolean; reason: string | null; text_available: boolean; text_reason: string | null; old_text: string | null; new_text: string | null; fields: { check_code: string; label: string; old: string | null; new: string | null; old_outcome: string | null; new_outcome: string | null; changed: boolean }[] };
 }

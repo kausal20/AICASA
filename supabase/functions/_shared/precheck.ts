@@ -70,6 +70,8 @@ export interface CheckResult {
   findings: Finding[];
   summary: Record<string, number>;
   extracted_text_chars: number;
+  /** The text the engine read (capped), stored so two versions can be compared line by line. Empty when nothing was read. */
+  extracted_text: string;
 }
 
 export const ENGINE_VERSION = 'aicasa-deterministic-v1';
@@ -523,6 +525,7 @@ export async function runPrecheck(file: FileInput, requirement: Requirement | nu
     findings,
     summary,
     extracted_text_chars: text.length,
+    extracted_text: text.slice(0, 100000),
   };
 }
 

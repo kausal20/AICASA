@@ -121,7 +121,7 @@ async function main() {
     );
     await rpc('complete_document_check', {
       p_run_id: run.id, p_engine: res.engine, p_status: res.status, p_extraction_status: res.extraction_status, p_extraction_method: res.extraction_method,
-      p_steps: res.steps, p_limitations: res.limitations, p_summary: res.summary, p_findings: res.findings, p_error: null,
+      p_steps: res.steps, p_limitations: res.limitations, p_summary: res.summary, p_findings: res.findings, p_error: null, p_extracted_text: res.extracted_text,
     });
     n++;
   }

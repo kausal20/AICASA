@@ -13,18 +13,28 @@ import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/States';
 import { useAction } from '@/hooks/useAction';
 import { fmtDateTime } from '@/lib/format';
+import { cadreSplit, requiredCount } from '@/lib/matrixMath';
 import type { ComplianceRule } from '@/types/domain';
 
 const KINDS: Record<string, string> = {
   min: 'Minimum value', max: 'Maximum value', ratio_max: 'Ratio at most (a ÷ b ≤ threshold)', consistency_gt: 'Consistency (a > b)',
+  required_count: 'Required count (ceil of base × factor, or base ÷ divisor)', cadre_ratio: 'Cadre ratio (faculty split by cadre)',
 };
+const LEVELS: [string, string][] = [['ug_engg', 'UG Engineering'], ['pg_engg', 'PG Engineering'], ['diploma', 'Diploma']];
+type Params = Record<string, unknown>;
+
+function levelText(v: unknown): string {
+  return Object.entries((v ?? {}) as Record<string, number>).map(([k, n]) => `${k} ${n}`).join(' / ');
+}
 
 export function ruleSummary(r: Pick<ComplianceRule, 'kind' | 'params'>): string {
   const p = r.params as Record<string, string | number | undefined>;
   switch (r.kind) {
     case 'min': return `${p.field} ≥ ${p.threshold}${p.unit ? ` ${p.unit}` : ''}`;
     case 'max': return `${p.field} ≤ ${p.threshold}${p.unit ? ` ${p.unit}` : ''}`;
-    case 'ratio_max': return `${p.numerator} ÷ ${p.denominator} ≤ ${p.threshold}`;
+    case 'ratio_max': return p.threshold_by_level ? `${p.numerator} ÷ ${p.denominator} ≤ ${levelText(p.threshold_by_level)}` : `${p.numerator} ÷ ${p.denominator} ≤ ${p.threshold}`;
+    case 'required_count': return `${p.declared_field} ≥ ceil(${p.base_field} ${p.divisor !== undefined ? `÷ ${p.divisor}` : `× ${p.factor}`}) ${p.noun ?? ''}`.trim();
+    case 'cadre_ratio': return `Faculty = ceil(${p.base_field} ÷ ${p.divisor_by_level ? levelText(p.divisor_by_level) : p.divisor}), cadres ${(p.ratios as number[] | undefined)?.join(':') ?? '?'}`;
     case 'consistency_gt': return `${p.field} > ${p.other}${p.when_flag ? ` when ${p.when_flag}` : ''}`;
     default: return `Unsupported kind "${r.kind}"`;
   }
@@ -80,26 +90,67 @@ export function ComplianceRulesPanel() {
 function PublishRuleDialog({ base, onClose }: { base: ComplianceRule | null; onClose: () => void }) {
   const types = useQuery({ queryKey: ['application-types'], queryFn: getApplicationTypes });
   const p = (base?.params ?? {}) as Record<string, string | number | undefined>;
+  const p0 = (base?.params ?? {}) as Params;
+  const lvl0 = ((p0.threshold_by_level ?? p0.divisor_by_level ?? {}) as Record<string, number>);
   const [f, setF] = useState({
     code: base?.code ?? '', label: base?.label ?? '', kind: base?.kind && KINDS[base.kind] ? base.kind : 'min',
     field: String(p.field ?? p.numerator ?? ''), other: String(p.other ?? p.denominator ?? ''), threshold: p.threshold !== undefined ? String(p.threshold) : '',
     unit: String(p.unit ?? ''), target: String(p.target ?? ''), whenFlag: String(p.when_flag ?? ''), source: base?.source_reference ?? '',
     synthetic: base?.is_synthetic ?? true, explanation: base?.explanation ?? '', reason: '',
+    baseField: String(p0.base_field ?? ''), declaredField: String(p0.declared_field ?? ''), noun: String(p0.noun ?? ''), subject: String(p0.subject ?? 'Sanctioned intake'),
+    mode: p0.divisor !== undefined ? 'divisor' : 'factor', amount: String(p0.divisor ?? p0.factor ?? ''),
+    useLevels: !!(p0.threshold_by_level ?? p0.divisor_by_level), levelField: String(p0.level_field ?? 'programme_level'), defaultLevel: String(p0.default_level ?? 'ug_engg'),
+    ug_engg: String(lvl0.ug_engg ?? ''), pg_engg: String(lvl0.pg_engg ?? ''), diploma: String(lvl0.diploma ?? ''), ratios: ((p0.ratios as number[] | undefined) ?? [1, 2, 6]).join(':'),
   });
   const [applies, setApplies] = useState<string[]>(base?.applies_to ?? []);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
+  const levelMap = Object.fromEntries(LEVELS.filter(([k]) => f[k as 'ug_engg'].trim() !== '').map(([k]) => [k, Number(f[k as 'ug_engg'])]));
+  const levelParams = f.useLevels ? { level_field: f.levelField, default_level: f.defaultLevel } : {};
+  const ratioParts = f.ratios.split(':').map((x) => Number(x.trim()));
   const params: Record<string, unknown> = f.kind === 'ratio_max'
-    ? { numerator: f.field, denominator: f.other, threshold: Number(f.threshold), ...(f.target ? { target: f.target } : {}) }
+    ? { numerator: f.field, denominator: f.other, ...(f.useLevels ? { ...levelParams, threshold_by_level: levelMap } : { threshold: Number(f.threshold) }), ...(f.target && !f.useLevels ? { target: f.target } : {}) }
     : f.kind === 'consistency_gt' ? { field: f.field, other: f.other, ...(f.whenFlag ? { when_flag: f.whenFlag } : {}) }
-      : { field: f.field, threshold: Number(f.threshold), ...(f.unit ? { unit: f.unit } : {}) };
+      : f.kind === 'required_count' ? { base_field: f.baseField, declared_field: f.declaredField, noun: f.noun, subject: f.subject, [f.mode]: Number(f.amount) }
+        : f.kind === 'cadre_ratio' ? {
+          base_field: f.baseField, ...(f.useLevels ? { ...levelParams, divisor_by_level: levelMap } : { divisor: Number(f.amount) }), ratios: ratioParts,
+          names: (p0.names as string[] | undefined) ?? ['Professors', 'Associate Professors', 'Assistant Professors'],
+          fields: (p0.fields as string[] | undefined) ?? ['faculty_professors', 'faculty_associate_professors', 'faculty_assistant_professors'],
+        } : { field: f.field, threshold: Number(f.threshold), ...(f.unit ? { unit: f.unit } : {}) };
+  const preview = (() => {
+    try {
+      if (f.kind === 'required_count' && f.amount.trim() !== '') {
+        const n = requiredCount(480, { [f.mode]: Number(f.amount) });
+        return `Example: base 480 → ${n} ${f.noun || 'required'}.`;
+      }
+      if (f.kind === 'cadre_ratio') {
+        const div = f.useLevels ? Number(f[f.defaultLevel as 'ug_engg'] || '') : Number(f.amount);
+        if (!div) return null;
+        const r = cadreSplit(480, div, ratioParts);
+        return `Example: intake 480 → ${r.total} faculty → ${r.parts.join(' / ')} (plus 1 Principal).`;
+      }
+    } catch { return null; }
+    return null;
+  })();
   const act = useAction(() => publishComplianceRule({ code: f.code, label: f.label, kind: f.kind, appliesTo: applies, params, source: f.source,
     synthetic: f.synthetic, explanation: f.explanation, reason: f.reason }), {
     success: (r) => `${r.code} v${r.version} is active.`, invalidate: [['compliance-rules'], ['matrix']], onSuccess: onClose,
   });
   const fields = [...new Set((types.data ?? []).filter((t) => applies.includes(t.code)).flatMap((t) => t.form_schema.map((x) => x.key)))];
-  const needsThreshold = f.kind !== 'consistency_gt';
-  const valid = /^[a-z][a-z0-9_]*$/.test(f.code) && f.label.trim().length >= 3 && applies.length > 0 && f.field && (f.kind === 'min' || f.kind === 'max' || f.other)
-    && (!needsThreshold || f.threshold.trim() !== '') && f.source.trim().length >= 5 && f.reason.trim().length >= 10;
+  const simple = ['min', 'max', 'ratio_max', 'consistency_gt'].includes(f.kind);
+  const needsThreshold = ['min', 'max'].includes(f.kind) || (f.kind === 'ratio_max' && !f.useLevels);
+  const levelsOk = !f.useLevels || (LEVELS.some(([k]) => f[k as 'ug_engg'].trim() !== '') && f[f.defaultLevel as 'ug_engg']?.trim() !== '');
+  const kindOk = simple
+    ? f.field && (f.kind === 'min' || f.kind === 'max' || f.other) && (!needsThreshold || f.threshold.trim() !== '')
+    : f.kind === 'required_count'
+      ? f.baseField && f.declaredField && f.noun.trim().length >= 2 && Number(f.amount) > 0
+      : f.baseField && ratioParts.length === 3 && ratioParts.every((x) => Number.isInteger(x) && x > 0) && (f.useLevels || Number(f.amount) > 0);
+  const valid = /^[a-z][a-z0-9_]*$/.test(f.code) && f.label.trim().length >= 3 && applies.length > 0 && kindOk && levelsOk
+    && f.source.trim().length >= 5 && f.reason.trim().length >= 10;
+  const fieldSelect = (label: string, key: 'field' | 'other' | 'baseField' | 'declaredField') => (
+    <SelectField label={label} required value={f[key]} onChange={set(key)}>
+      <option value="">Select a form field</option>{fields.map((x) => <option key={x} value={x}>{x}</option>)}
+    </SelectField>
+  );
   return (
     <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title={base ? `New version of ${base.code}` : 'New Deficiency Matrix rule'}
       description="The server checks that the fields exist on every selected form and that a source is given."
@@ -118,17 +169,38 @@ function PublishRuleDialog({ base, onClose }: { base: ComplianceRule | null; onC
               <input type="checkbox" className="accent-[#1e3a8a]" checked={on} onChange={() => setApplies(on ? applies.filter((x) => x !== t.code) : [...applies, t.code])} />{t.code}</label>;
           })}</div>
         </fieldset>
-        <SelectField label={f.kind === 'ratio_max' ? 'Numerator field' : 'Field'} required value={f.field} onChange={set('field')}>
-          <option value="">Select a form field</option>{fields.map((x) => <option key={x} value={x}>{x}</option>)}
-        </SelectField>
-        {f.kind === 'ratio_max' || f.kind === 'consistency_gt' ? (
-          <SelectField label={f.kind === 'ratio_max' ? 'Denominator field' : 'Compared with'} required value={f.other} onChange={set('other')}>
-            <option value="">Select a form field</option>{fields.map((x) => <option key={x} value={x}>{x}</option>)}
-          </SelectField>
-        ) : <TextField label="Unit" value={f.unit} onChange={set('unit')} />}
+        {simple && fieldSelect(f.kind === 'ratio_max' ? 'Numerator field' : 'Field', 'field')}
+        {f.kind === 'ratio_max' || f.kind === 'consistency_gt' ? fieldSelect(f.kind === 'ratio_max' ? 'Denominator field' : 'Compared with', 'other')
+          : simple ? <TextField label="Unit" value={f.unit} onChange={set('unit')} /> : null}
         {needsThreshold && <TextField label="Threshold" type="number" required value={f.threshold} onChange={set('threshold')} />}
-        {f.kind === 'ratio_max' && <TextField label="Target as shown" value={f.target} onChange={set('target')} hint="e.g. 1:20" />}
+        {f.kind === 'ratio_max' && !f.useLevels && <TextField label="Target as shown" value={f.target} onChange={set('target')} hint="e.g. 1:20" />}
         {f.kind === 'consistency_gt' && <TextField label="Only when this flag is declared" value={f.whenFlag} onChange={set('whenFlag')} hint="Optional boolean form field" />}
+        {f.kind === 'required_count' && <>
+          {fieldSelect('Base field (e.g. student_count)', 'baseField')}
+          {fieldSelect('Declared field (e.g. computer_count)', 'declaredField')}
+          <SelectField label="Required = base" value={f.mode} onChange={set('mode')}><option value="divisor">÷ divisor</option><option value="factor">× factor</option></SelectField>
+          <TextField label={f.mode === 'divisor' ? 'Divisor' : 'Factor'} type="number" required value={f.amount} onChange={set('amount')} hint="Must be greater than zero. The result is rounded up." />
+          <TextField label="Counted item" required value={f.noun} onChange={set('noun')} hint='Shown in the message, e.g. "computers"' />
+          <TextField label="Subject of the message" value={f.subject} onChange={set('subject')} hint='"Sanctioned intake requires N … only M declared — Deficiency detected."' />
+        </>}
+        {f.kind === 'cadre_ratio' && <>
+          {fieldSelect('Intake field (S)', 'baseField')}
+          <TextField label="Cadre ratio (Professor : Associate : Assistant)" required value={f.ratios} onChange={set('ratios')} hint="Three whole numbers, e.g. 1:2:6. Counts are read from the faculty_* fields." />
+          {!f.useLevels && <TextField label="Divisor (intake per faculty)" type="number" required value={f.amount} onChange={set('amount')} />}
+        </>}
+        {(f.kind === 'ratio_max' || f.kind === 'cadre_ratio') && (
+          <fieldset className="sm:col-span-2 rounded-lg border border-line p-3">
+            <label className="flex items-center gap-2 text-[13px] font-medium"><input type="checkbox" className="accent-[#1e3a8a]" checked={f.useLevels} onChange={(e) => setF({ ...f, useLevels: e.target.checked })} />Programme-dependent {f.kind === 'ratio_max' ? 'ratio (students per faculty)' : 'divisor (intake per faculty)'}</label>
+            {f.useLevels && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                {LEVELS.map(([k, name]) => <TextField key={k} label={name} type="number" value={f[k as 'ug_engg']} onChange={set(k as 'ug_engg')} hint={k} />)}
+                <TextField label="Form field holding the level" value={f.levelField} onChange={set('levelField')} />
+                <SelectField label="Level assumed when not declared" value={f.defaultLevel} onChange={set('defaultLevel')}>{LEVELS.map(([k, name]) => <option key={k} value={k}>{name}</option>)}</SelectField>
+              </div>
+            )}
+          </fieldset>
+        )}
+        {preview && <p className="sm:col-span-2 rounded-md bg-surface-muted px-3 py-2 text-xs text-ink-soft">{preview}</p>}
         <div className="sm:col-span-2"><TextField label="Source reference" required value={f.source} onChange={set('source')} hint="Where the requirement comes from. State plainly if it is a demonstration value." /></div>
         <label className="flex items-center gap-2 text-[13px] sm:col-span-2"><input type="checkbox" className="accent-[#1e3a8a]" checked={f.synthetic} onChange={(e) => setF({ ...f, synthetic: e.target.checked })} />Synthetic demonstration rule (shown with a "Synthetic rule" label)</label>
         <div className="sm:col-span-2"><TextField label="Extra explanation shown with the result" value={f.explanation} onChange={set('explanation')} /></div>

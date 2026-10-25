@@ -49,7 +49,7 @@ export function OfficerDashboard() {
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Kpi label="My open applications" value={open.length} loading={queue.isLoading} icon={Inbox} to="/app/queue" />
         <Kpi label="My overdue applications" value={overdueCases.length} loading={queue.isLoading} icon={Hourglass} tone={overdueCases.length ? 'danger' : 'neutral'} to="/app/queue?overdue=1" />
-        <Kpi label="Corrections to review" value={reviews.length} loading={defs.isLoading} icon={Eye} tone={reviews.length ? 'warning' : 'neutral'} to="/app/deficiencies" />
+        <Kpi label="Clarifications to review" value={reviews.length} loading={defs.isLoading} icon={Eye} tone={reviews.length ? 'warning' : 'neutral'} to="/app/deficiencies" />
         {can('evc') && <Kpi label="EVCs to schedule" value={toSchedule.length} loading={evc.isLoading} icon={CalendarClock} tone={toSchedule.length ? 'warning' : 'neutral'} to="/app/evc?tab=queue" />}
         {can('compliance') && <Kpi label="Evidence to verify" value={toVerify.length} loading={obl.isLoading} icon={ClipboardCheck} tone={toVerify.length ? 'warning' : 'neutral'} to="/app/compliance?status=submitted" />}
         <Kpi label="Open escalations" value={esc.data?.length ?? 0} loading={esc.isLoading} icon={Siren} tone={esc.data?.length ? 'danger' : 'neutral'} to="/app/escalations?status=open" />
@@ -69,7 +69,7 @@ export function OfficerDashboard() {
             ))}</ul>
           )}
         </Panel>
-        <Panel className="xl:col-span-4" title="Corrections awaiting your review">
+        <Panel className="xl:col-span-4" title="Clarifications awaiting your review">
           {!reviews.length ? <EmptyState title="Nothing to review" /> : (
             <ul className="divide-y divide-line">{reviews.slice(0, 5).map((d) => (
               <li key={d.id}><Link to={`/app/applications/${d.application_id}?tab=deficiencies`} className="block px-5 py-3 hover:bg-surface-muted/60"><p className="text-[13px] font-medium text-accent">{d.applications?.reference}</p><p className="text-xs text-ink-soft">{d.title}</p></Link></li>

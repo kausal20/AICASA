@@ -73,7 +73,7 @@ describe('Deficiency Matrix', () => {
     expect(by('rule:land_area_min')).toMatchObject({ result: 'potential_issue', is_synthetic: true, input_value: '2 acres' });
     expect(by('rule:built_up_min').result).toBe('not_checked');
     expect(by('rule:student_faculty_ratio')).toMatchObject({ result: 'potential_issue', input_value: '1:22.5' });
-    expect(by('rule:student_computer_ratio').result).toBe('not_checked');
+    expect(by('rule:computers_required').result).toBe('not_checked');
     expect(by('rule:proposed_intake_consistency')).toMatchObject({ result: 'failed_validation', is_synthetic: false });
     // evaluation never changes the case
     expect((await t.owner<{ status: string }>(`select status from applications where id = $1`, [draft]))[0].status).toBe('draft');
@@ -321,7 +321,9 @@ describe('Version-controlled correction', () => {
     expect((await t.owner<{ status: string }>(`select status from applications where id = $1`, [n2]))[0].status).toBe('returned_for_correction');
   });
 
-  it('uses the configured correction period when no date is given, and refuses when none is configured', async () => {
+  it('without a query window, uses the configured correction period when no date is given, and refuses when none is configured', async () => {
+    // The query window (48 h) supersedes the default period when configured (see query_window.test.ts); remove it to test the fallback path.
+    await t.owner(`delete from system_settings where key = 'deficiency.query_window'`);
     const d1 = (await byTitle('Extension of approval — University Department of Technology')).id;
     const raise = `select to_jsonb(raise_deficiency($1, 'Affidavit year missing', 'The affidavit does not state the academic year.', 'Demo checklist EOA/affidavit', 'Upload an affidavit that states the academic year.', 'affidavit', null)) as d`;
     const r = await t.as<{ d: { due_at: string } }>(SCRUTINY, raise, [d1]);

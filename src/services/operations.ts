@@ -32,6 +32,10 @@ export async function changeDeficiencyDeadline(deficiencyId: string, newDueAt: s
   return unwrap(await supabase.rpc('change_deficiency_deadline', { p_deficiency_id: deficiencyId, p_new_due: newDueAt, p_reason: reason, p_expected_version: version }));
 }
 
+export async function reopenDeficiencyWindow(deficiencyId: string, reason: string, version: number) {
+  return unwrap(await supabase.rpc('reopen_deficiency_window', { p_deficiency_id: deficiencyId, p_reason: reason, p_expected_version: version }));
+}
+
 export async function returnForCorrection(applicationId: string, version: number, reason: string) {
   return unwrap(await supabase.rpc('return_for_correction', { p_application_id: applicationId, p_expected_version: version, p_reason: reason }));
 }
@@ -102,6 +106,12 @@ export async function withdrawEvcConflict(id: string, reason: string) {
 // ---- Deficiency Matrix and version comparison ------------------------------
 export async function getDeficiencyMatrix(applicationId: string) {
   return unwrap(await supabase.rpc('deficiency_matrix', { p_application_id: applicationId })) as MatrixRow[];
+}
+
+/** Reconciles the matrix rule results with the case's deficiencies (opens, updates or resolves). Officer only. */
+export async function recheckMatrixDeficiencies(applicationId: string) {
+  return unwrap(await supabase.rpc('recheck_matrix_deficiencies', { p_application_id: applicationId })) as
+    { created: number; updated: number; resolved: number; skipped?: string | null };
 }
 
 export async function compareVersions(oldVersionId: string, newVersionId: string) {

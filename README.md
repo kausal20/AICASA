@@ -236,3 +236,17 @@ An officer review resolves the memo; *still deficient* and *needs clarification*
 **Existing projects.** After applying the migration, add the demo configuration from the end of `supabase/seed.sql`
 (route E, `CHANGE_SITE`, `compliance_rules`, the two settings), then create the concurrent-review demo case with
 `node scripts/demo-parallel-case.mjs` (signs in as the synthetic Sahyadri representative; no service-role key needed).
+
+## Matrix requirements (migration `20261026000100_matrix_requirements.sql`)
+
+New application fields for EOA and NEW_INST: `library_book_count`, `lab_count`, `faculty_professors`, `faculty_associate_professors`,
+`faculty_assistant_professors` and `programme_level` (ug_engg / pg_engg / diploma). New rule kinds: **Required count**
+(`ceil(base × factor)` or `ceil(base ÷ divisor)` against a declared field; message "Sanctioned intake requires N computers, only M declared — Deficiency detected.")
+and **Cadre ratio** (faculty = ceil(intake ÷ divisor), split by the cadre ratio with largest-remainder rounding, one result per cadre).
+Student-to-faculty ratios and the cadre divisor can be programme-dependent (UG 20, PG 15, Diploma 25). Seeded values are the figures supplied by
+the project team from APH 2024-27 (computers 1:4, SFR, cadre 1:2:6) or **clearly marked DEMO values** (library books per student, minimum laboratories);
+none has been verified against the handbook. The cadre rule reads the intake from `approved_intake`, which only the EOA form has.
+
+A rule that is not met opens a deficiency on the case (`auto_generated`, citing the rule id and version) when the case is submitted or an officer
+presses **Re-check rules**; a re-check that finds the rule met, or the rule retired, resolves it. Opening needs the configured default correction period.
+Existing projects: apply `20261025000200` then `20261026000100`, then `node scripts/demo-matrix-cases.mjs` to add the two demo cases.

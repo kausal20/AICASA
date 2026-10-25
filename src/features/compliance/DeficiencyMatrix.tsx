@@ -1,8 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { RefreshCw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertOctagon, CheckCircle2, CircleDashed, CircleHelp, FileWarning, ListChecks, ScanEye, TriangleAlert } from 'lucide-react';
-import { getDeficiencyMatrix } from '@/services/operations';
+import { getDeficiencyMatrix, recheckMatrixDeficiencies } from '@/services/operations';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { useAction } from '@/hooks/useAction';
+import { Button } from '@/components/ui/Button';
 import { Badge, type Tone } from '@/components/ui/Badge';
 import { Panel } from '@/components/ui/Workspace';
 import { ErrorState, LoadingRows } from '@/components/ui/States';
@@ -28,6 +32,12 @@ const SECTIONS: Record<MatrixRow['section'], string> = {
  */
 export function DeficiencyMatrix({ applicationId, audience }: { applicationId: string; audience: 'institution' | 'staff' }) {
   const q = useQuery({ queryKey: ['matrix', applicationId], queryFn: () => getDeficiencyMatrix(applicationId) });
+  const { workspace, can } = useAuth();
+  const canRecheck = audience === 'staff' && workspace === 'officer' && can('scrutiny');
+  const recheck = useAction(() => recheckMatrixDeficiencies(applicationId), {
+    success: (r) => r.skipped ? r.skipped : `Rules re-checked: ${r.created} opened, ${r.updated} updated, ${r.resolved} resolved.`,
+    invalidate: [['matrix'], ['deficiencies'], ['application'], ['applications'], ['navcounts']],
+  });
   const [showPassed, setShowPassed] = useState(false);
   const rows = useMemo(() => (q.data ?? []).slice().sort((a, b) => a.sort_order - b.sort_order), [q.data]);
   const counts = useMemo(() => Object.fromEntries(ORDER.map((r) => [r, rows.filter((x) => x.result === r).length])) as Record<MatrixResult, number>, [rows]);
@@ -47,10 +57,13 @@ export function DeficiencyMatrix({ applicationId, audience }: { applicationId: s
       title={<span className="flex items-center gap-2"><ListChecks className="h-4 w-4 text-primary" aria-hidden />Deficiency Matrix</span>}
       description="Pre-submission checks on the form, documents, file fingerprints, pre-check results and configured rules."
       action={rows.length > 0 && (
-        <label className="flex items-center gap-2 text-[13px] text-ink-soft">
-          <input type="checkbox" className="h-4 w-4 accent-[#1e3a8a]" checked={showPassed} onChange={(e) => setShowPassed(e.target.checked)} />
-          Show passed ({counts.passed})
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+            <input type="checkbox" className="h-4 w-4 accent-[#1e3a8a]" checked={showPassed} onChange={(e) => setShowPassed(e.target.checked)} />
+            Show passed ({counts.passed})
+          </label>
+          {canRecheck && <Button size="sm" variant="secondary" icon={<RefreshCw className="h-3.5 w-3.5" />} loading={recheck.isPending} onClick={() => recheck.mutate(undefined)}>Re-check rules</Button>}
+        </div>
       )}>
       {q.isLoading ? <div className="p-4"><LoadingRows rows={3} /></div> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : (
         <>
@@ -88,8 +101,9 @@ export function DeficiencyMatrix({ applicationId, audience }: { applicationId: s
           )}
 
           <p className="border-t border-line bg-surface-muted/50 px-5 py-2.5 text-xs leading-relaxed text-ink-soft">
-            Advisory. The matrix never rejects an application, and passing it does not mean approval: scrutiny and decisions stay with authorised officers.
-            Figures are as declared by the institution, not verified measurements.
+            A configured rule that is not met is recorded as an open deficiency on the case, citing the rule and its version, and it is resolved automatically when a re-check shows the rule is met
+            (see the Deficiencies tab). The matrix never rejects an application, and passing it does not mean approval: scrutiny and decisions stay with authorised officers.
+            Figures are as declared by the institution, not verified measurements.{audience === 'institution' && ' Rule results become deficiencies when you submit.'}
             {synthetic && ' Items marked "Synthetic rule" use demonstration values, not AICTE thresholds.'}
           </p>
         </>

@@ -107,7 +107,7 @@ export function ApplicationDetailPage() {
             { value: 'overview', label: 'Overview' },
             { value: 'timeline', label: <>Timeline{events.data ? <span className="ml-1.5 text-ink-faint tabular">{events.data.length}</span> : null}</> },
             { value: 'documents', label: <>Documents{docs.data ? <span className="ml-1.5 text-ink-faint tabular">{docs.data.length}</span> : null}</> },
-            { value: 'deficiencies', label: <>Deficiencies{openDefs.length ? <span className="ml-1.5 rounded-full bg-warning-soft px-1.5 text-[11px] font-semibold text-[#7a5100]">{openDefs.length} open</span> : null}</> },
+            { value: 'deficiencies', label: <>Query &amp; Clarification{openDefs.length ? <span className="ml-1.5 rounded-full bg-warning-soft px-1.5 text-[11px] font-semibold text-[#7a5100]">{openDefs.length} open</span> : null}</> },
             { value: 'evc', label: 'EVC' },
             { value: 'details', label: 'Details' },
             ...(staff ? [{ value: 'audit', label: 'Audit' }] : []),
@@ -135,7 +135,7 @@ export function ApplicationDetailPage() {
             <TabPanel value="deficiencies">
               <div className="space-y-4">
                 {defs.isLoading ? <Panel><LoadingRows /></Panel> : defs.error ? <Panel><ErrorState error={defs.error} onRetry={() => defs.refetch()} /></Panel> : !defs.data?.length ? (
-                  <Panel><EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="No deficiencies recorded" body="Deficiencies raised during review appear here with every response and review outcome." /></Panel>
+                  <Panel><EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="No queries raised" body="Queries raised during review appear here with every clarification and review outcome." /></Panel>
                 ) : defs.data.map((d) => <DeficiencyCard key={d.id} d={{ ...d, applications: { reference: a.reference, title: a.title, institution_id: a.institution_id, status: a.status } }}
                   mode={staff ? 'staff' : 'institution'} institutionId={a.institution_id} canReview={workspace === 'officer'} />)}
               </div>
@@ -262,7 +262,7 @@ function OfficerActions({ a, transitions, loading, openDeficiencies, canAssign }
             ) : <p className="text-[13px] text-ink-soft">No routing action is available to you at this point.</p>}
             {review && (
               <div className="grid gap-2">
-                <Button variant="secondary" className="w-full justify-start" icon={<ShieldAlert className="h-4 w-4" />} onClick={() => setDef(true)}>Record deficiency</Button>
+                <Button variant="secondary" className="w-full justify-start" icon={<ShieldAlert className="h-4 w-4" />} onClick={() => setDef(true)}>Raise query</Button>
                 {openDeficiencies > 0 && a.status !== 'returned_for_correction' && (
                   <Button variant="secondary" className="w-full justify-start" icon={<RotateCcw className="h-4 w-4" />} onClick={() => setRet(true)}>Return to institution ({openDeficiencies})</Button>
                 )}
@@ -306,6 +306,14 @@ function AdminActions({ a, canAssign }: { a: ApplicationRow; canAssign: boolean 
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
+/** Labels for declared figures whose key is not self-explanatory; other keys fall back to a humanised key. */
+const FIELD_LABELS: Record<string, string> = {
+  student_count: 'Students (total)', faculty_count: 'Faculty (total)', computer_count: 'Computers', library_book_count: 'Library books / volumes',
+  lab_count: 'Laboratories', faculty_professors: 'Faculty: Professors', faculty_associate_professors: 'Faculty: Associate Professors',
+  faculty_assistant_professors: 'Faculty: Assistant Professors', programme_level: 'Programme level', approved_intake: 'Approved intake',
+  land_area_acres: 'Land area (acres)', built_up_area_sqm: 'Built-up instructional area (sqm)',
+};
+
 function OverviewTab({ a, events, openDefs, docs, missingDocs, latestEvc, decisions, name, onTab }: {
   a: ApplicationRow; events?: AppEvent[]; openDefs: Deficiency[]; docs: number; missingDocs: string[]; latestEvc?: EvcRow;
   decisions?: { id: string; decision: string; reason: string; recorded_by: string; created_at: string }[]; name: (id: string | null) => string; onTab: (t: string) => void;
@@ -318,7 +326,7 @@ function OverviewTab({ a, events, openDefs, docs, missingDocs, latestEvc, decisi
         </Notice>
       )}
       <div className="grid gap-4 md:grid-cols-3">
-        <SummaryTile icon={ShieldAlert} tone={openDefs.length ? 'warning' : 'ok'} title="Deficiencies" value={openDefs.length ? `${openDefs.length} open` : 'None open'}
+        <SummaryTile icon={ShieldAlert} tone={openDefs.length ? 'warning' : 'ok'} title="Queries" value={openDefs.length ? `${openDefs.length} open` : 'None open'}
           body={openDefs.length ? openDefs.map((d) => d.title).join('; ') : 'No outstanding corrections.'} onClick={() => onTab('deficiencies')} />
         <SummaryTile icon={FileText} tone={missingDocs.length ? 'warning' : 'ok'} title="Documents" value={`${docs} on file`}
           body={missingDocs.length ? `Missing: ${missingDocs.join(', ')}` : 'All required documents uploaded.'} onClick={() => onTab('documents')} />
@@ -436,7 +444,7 @@ function DetailsTab({ a, app, decisions, name }: { a: ApplicationRow; app: Appli
           { label: 'Region', value: a.region_code }, { label: 'Type', value: a.application_type_name },
           { label: 'Route version', value: `${a.route_name} v${a.route_version} (fixed when the case was created)` },
           { label: 'Created', value: fmtDateTime(a.created_at) },
-          ...Object.entries(app.form_data ?? {}).map(([k, v]) => ({ label: humanize(k), value: typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v ?? '—') })),
+          ...Object.entries(app.form_data ?? {}).map(([k, v]) => ({ label: FIELD_LABELS[k] ?? humanize(k), value: typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v ?? '—') })),
         ]} />
       </div></Panel>
       {!!decisions?.length && (
@@ -514,17 +522,19 @@ function RaiseDeficiencyDialog({ a, onClose }: { a: ApplicationRow; onClose: () 
   } });
   const { context } = useAuth();
   const period = context?.settings?.['deficiency.correction_period'] as { days?: number; source_reference?: string } | undefined;
+  const win = context?.settings?.['deficiency.query_window'] as { hours?: number; source_reference?: string } | undefined;
+  const windowHours = typeof win?.hours === 'number' && win.hours > 0 ? win.hours : null;
   const defaultDays = typeof period?.days === 'number' && period.days >= 1 ? period.days : null;
   const [f, setF] = useState({ title: '', reason: '', source: '', correction: '', docType: '', due: '' });
   const [useDefault, setUseDefault] = useState(defaultDays !== null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const act = useAction(() => raiseDeficiency({ applicationId: a.id, title: f.title, reason: f.reason, source: f.source, correction: f.correction, docType: f.docType || undefined,
-    dueAt: useDefault ? null : endOfDayIso(f.due) }),
-    { success: 'Deficiency recorded. Return the case to notify the institution.', invalidate: [['deficiencies'], ['application'], ['matrix']], onSuccess: onClose });
-  const valid = f.title.trim().length >= 5 && f.reason.trim().length >= 10 && f.source.trim().length >= 3 && f.correction.trim().length >= 10 && (useDefault || f.due);
+    dueAt: windowHours || useDefault ? null : endOfDayIso(f.due) }),
+    { success: 'Query raised. Return the case to the institution to send it.', invalidate: [['deficiencies'], ['application'], ['matrix']], onSuccess: onClose });
+  const valid = f.title.trim().length >= 5 && f.reason.trim().length >= 10 && f.source.trim().length >= 3 && f.correction.trim().length >= 10 && (windowHours !== null || useDefault || f.due);
   return (
-    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title="Record deficiency" description={a.reference}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={!valid} onClick={() => act.mutate(undefined)}>Record deficiency</Button></>}>
+    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title="Raise query" description={a.reference}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={!valid} onClick={() => act.mutate(undefined)}>Raise query</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2"><TextField label="Title" required value={f.title} onChange={set('title')} /></div>
         <div className="sm:col-span-2"><TextAreaField label="Reason" required value={f.reason} onChange={set('reason')} hint="What is missing or incorrect, stated plainly." /></div>
@@ -533,7 +543,10 @@ function RaiseDeficiencyDialog({ a, onClose }: { a: ApplicationRow; onClose: () 
           <option value="">None / information only</option>
           {(reqs.data ?? []).map((r) => <option key={r.doc_type} value={r.doc_type}>{r.name}</option>)}
         </SelectField>
-        <div className="sm:col-span-2"><TextAreaField label="Correction requested" required value={f.correction} onChange={set('correction')} /></div>
+        <div className="sm:col-span-2"><TextAreaField label="Query: clarification or correction requested" required value={f.correction} onChange={set('correction')} /></div>
+        {windowHours !== null ? (
+          <div className="sm:col-span-2"><Notice tone="info" title={`${windowHours}-hour response window`}>The institution has {windowHours} hours from the moment the query is raised to send its clarification. A live countdown shows on both sides; when it ends, uploads are disabled and the escalation rule fires. {win?.source_reference}</Notice></div>
+        ) : (
         <fieldset className="sm:col-span-2">
           <legend className="mb-1.5 text-[13px] font-medium">Correction deadline <span className="text-danger">*</span></legend>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -549,6 +562,7 @@ function RaiseDeficiencyDialog({ a, onClose }: { a: ApplicationRow; onClose: () 
             </label>
           </div>
         </fieldset>
+        )}
       </div>
     </Dialog>
   );

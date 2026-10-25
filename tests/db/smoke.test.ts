@@ -7,7 +7,7 @@ describe('migrations and seed', () => {
     const rows = await t.owner<{ reference: string; status: string; current_stage: string }>(
       `select reference, status, current_stage from applications order by reference`,
     );
-    expect(rows.length).toBe(11);
+    expect(rows.length).toBe(13);
     const statuses = rows.map((r) => r.status).sort();
     expect(statuses).toContain('draft');
     expect(statuses).toContain('returned_for_correction');

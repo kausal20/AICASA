@@ -336,6 +336,36 @@ begin
   alter table public.application_decisions enable trigger decisions_append_only;
 end $$;
 
+-- Two cases whose declared figures breach Deficiency Matrix rules; submitting them records the deficiencies automatically.
+create or replace function app.demo_matrix_cases(p_uploads jsonb default '{}'::jsonb) returns void
+language plpgsql as $$
+declare a public.applications; v_inst uuid; v_form jsonb;
+begin
+  v_form := '{"approved_intake": 480, "intake_increase": false, "programme_level": "ug_engg", "student_count": 480, "faculty_count": 24,
+              "computer_count": 120, "library_book_count": 4800, "lab_count": 5,
+              "faculty_professors": 3, "faculty_associate_professors": 5, "faculty_assistant_professors": 16}'::jsonb;
+  if not exists (select 1 from public.applications where title = 'Extension of approval — computing capacity review (demo)') then
+    select id into v_inst from public.institutions where code = 'DEMO-WR-002';
+    perform app.demo_as('inst.sahyadri@aicasa-demo.test');
+    a := public.create_application_draft(v_inst, 'EOA', 'Extension of approval — computing capacity review (demo)', '2027-28', v_form || '{"computer_count": 95}');
+    perform app.demo_doc(p_uploads, 'M1_affidavit', 'DEMO-WR-002', a.id, 'affidavit', 'affidavit_computing_review.pdf');
+    perform app.demo_doc(p_uploads, 'M1_fire', 'DEMO-WR-002', a.id, 'fire_safety_certificate', 'fire_certificate_computing_review.pdf');
+    select * into a from public.applications where id = a.id;
+    perform public.submit_application(a.id, a.row_version);
+  end if;
+  if not exists (select 1 from public.applications where title = 'Extension of approval — faculty cadre review (demo)') then
+    select id into v_inst from public.institutions where code = 'DEMO-WR-001';
+    perform app.demo_as('inst.nirmala@aicasa-demo.test');
+    a := public.create_application_draft(v_inst, 'EOA', 'Extension of approval — faculty cadre review (demo)', '2027-28', v_form || '{"faculty_professors": 0}');
+    perform app.demo_doc(p_uploads, 'M2_affidavit', 'DEMO-WR-001', a.id, 'affidavit', 'affidavit_cadre_review.pdf');
+    perform app.demo_doc(p_uploads, 'M2_fire', 'DEMO-WR-001', a.id, 'fire_safety_certificate', 'fire_certificate_cadre_review.pdf');
+    select * into a from public.applications where id = a.id;
+    perform public.submit_application(a.id, a.row_version);
+  end if;
+end $$;
+revoke execute on function app.demo_matrix_cases(jsonb) from public, anon, authenticated;
+alter function app.demo_matrix_cases(jsonb) set search_path = public, app;
+
 -- One case on the concurrent-review route. Also callable on its own for databases seeded before the route existed.
 create or replace function app.demo_parallel_case(p_uploads jsonb default '{}'::jsonb) returns uuid
 language plpgsql as $$
@@ -562,6 +592,9 @@ begin
   -- Sahyadri: change of site on the concurrent-review route (both reviews pending)
   perform app.demo_parallel_case(p_uploads);
 
+  -- Two cases that breach matrix rules (computers; faculty cadre)
+  perform app.demo_matrix_cases(p_uploads);
+
   -- Spread cases in time so ageing, SLA and escalations are visible.
   perform app.demo_shift(n3, 70);
   perform app.demo_shift(n2, 25);
@@ -619,6 +652,17 @@ where code in ('EOA', 'NEW_INST') and not (form_schema @> '[{"key":"built_up_are
 
 -- Deficiency Matrix rules. The numeric thresholds are SYNTHETIC: chosen for the demonstration and not taken from
 -- the AICTE Approval Process Handbook. Each rule states where it applies and its source; results are advisory.
+update application_types
+set form_schema = form_schema || '[
+  {"key":"library_book_count","label":"Library books / volumes (total)","type":"number","required":false,"help":"Total books and volumes in the central library."},
+  {"key":"lab_count","label":"Number of laboratories","type":"number","required":false},
+  {"key":"faculty_professors","label":"Faculty: Professors","type":"number","required":false},
+  {"key":"faculty_associate_professors","label":"Faculty: Associate Professors","type":"number","required":false},
+  {"key":"faculty_assistant_professors","label":"Faculty: Assistant Professors","type":"number","required":false},
+  {"key":"programme_level","label":"Programme level","type":"text","required":false,"help":"ug_engg, pg_engg or diploma. Used by programme-dependent rules."}
+]'::jsonb
+where code in ('EOA', 'NEW_INST') and not (form_schema @> '[{"key":"library_book_count"}]'::jsonb);
+
 insert into public.compliance_rules (code, version, label, kind, applies_to, params, source_reference, is_synthetic, explanation) values
   ('land_area_min', 1, 'Declared land area', 'min', array['EOA', 'NEW_INST', 'CHANGE_SITE'],
    '{"field": "land_area_acres", "threshold": 2.5, "unit": "acres"}',
@@ -627,11 +671,24 @@ insert into public.compliance_rules (code, version, label, kind, applies_to, par
    '{"field": "built_up_area_sqm", "threshold": 4200, "unit": "sqm"}',
    'SYNTHETIC DEMO RULE - illustrative value for the prototype; not taken from the AICTE Approval Process Handbook', true, ''),
   ('student_faculty_ratio', 1, 'Student-to-faculty ratio (declared figures)', 'ratio_max', array['EOA', 'NEW_INST'],
-   '{"numerator": "student_count", "denominator": "faculty_count", "threshold": 20, "target": "1:20"}',
-   'SYNTHETIC DEMO RULE - illustrative value for the prototype; not taken from the AICTE Approval Process Handbook', true, ''),
-  ('student_computer_ratio', 1, 'Student-to-computer ratio (declared figures)', 'ratio_max', array['EOA', 'NEW_INST'],
-   '{"numerator": "student_count", "denominator": "computer_count", "threshold": 4, "target": "1:4"}',
-   'SYNTHETIC DEMO RULE - illustrative value for the prototype; not taken from the AICTE Approval Process Handbook', true, ''),
+   '{"numerator": "student_count", "denominator": "faculty_count", "level_field": "programme_level", "default_level": "ug_engg",
+     "threshold_by_level": {"ug_engg": 20, "pg_engg": 15, "diploma": 25}}',
+   'Ratios 1:20 (UG Engg), 1:15 (PG Engg), 1:25 (Diploma) as supplied by the project team from APH 2024-27; not verified against the handbook', true, ''),
+  ('computers_required', 1, 'Computers for the sanctioned intake', 'required_count', array['EOA', 'NEW_INST'],
+   '{"base_field": "student_count", "divisor": 4, "declared_field": "computer_count", "noun": "computers", "subject": "Sanctioned intake"}',
+   'Existing 1:4 student-to-computer norm used by the prototype (required computers = ceil(students / 4)); not verified against the current APH', true, ''),
+  ('library_books_min', 1, 'Library books for the sanctioned intake', 'required_count', array['EOA', 'NEW_INST'],
+   '{"base_field": "student_count", "factor": 10, "declared_field": "library_book_count", "noun": "library books", "subject": "Sanctioned intake"}',
+   'DEMO VALUE (10 books per student) until the real APH figure is entered; not an AICTE requirement', true, ''),
+  ('labs_min', 1, 'Minimum laboratories for the programme', 'min', array['EOA', 'NEW_INST'],
+   '{"field": "lab_count", "threshold": 4, "unit": "laboratories"}',
+   'DEMO VALUE (4 laboratories) until the real APH figure is entered; not an AICTE requirement', true, ''),
+  ('faculty_cadre_ratio', 1, 'Faculty cadre ratio', 'cadre_ratio', array['EOA'],
+   '{"base_field": "approved_intake", "level_field": "programme_level", "default_level": "ug_engg",
+     "divisor_by_level": {"ug_engg": 20, "pg_engg": 15, "diploma": 25}, "ratios": [1, 2, 6],
+     "names": ["Professors", "Associate Professors", "Assistant Professors"],
+     "fields": ["faculty_professors", "faculty_associate_professors", "faculty_assistant_professors"]}',
+   'Faculty = intake / 20 split Professor : Associate : Assistant = 1 : 2 : 6 (plus 1 Principal) as supplied by the project team from APH 2024-27 (UG Engineering); not verified against the handbook. The intake is read from approved_intake, which only the EOA form has, so the rule applies to EOA only.', true, ''),
   ('proposed_intake_consistency', 1, 'Proposed intake exceeds approved intake', 'consistency_gt', array['EOA'],
    '{"field": "proposed_intake", "other": "approved_intake", "when_flag": "intake_increase"}',
    'Form consistency check (logical comparison of two declared values; no regulatory threshold involved)', false, '')

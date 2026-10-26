@@ -60,6 +60,7 @@ describe('hard exclusions', () => {
       same_district: 'Excluded — same district as institute',
       declared_conflict: 'Excluded — declared conflict',
       affiliated: 'Excluded — affiliated with this institute',
+      no_specialization_match: 'Excluded — no specialization match',
     });
   });
 });
@@ -73,11 +74,11 @@ describe('ranking', () => {
     const farOneMatch = expert({ full_name: 'Far, one match', specializations: ['Civil'], region_code: 'ER' });
     const r = matchExperts(inst, [noMatch, farOneMatch, sameRegionOneMatch, neighbourTwoMatches, sameRegionTwoMatches]);
     expect(r.recommended.map((x) => x.expert.full_name)).toEqual([
-      'Same region, two matches', 'Neighbour, two matches', 'Same region, one match', 'Far, one match', 'No match',
+      'Same region, two matches', 'Neighbour, two matches', 'Same region, one match', 'Far, one match',
     ]);
-    expect(r.recommended.map((x) => x.rank)).toEqual([1, 2, 3, 4, 5]);
+    expect(r.recommended.map((x) => x.rank)).toEqual([1, 2, 3, 4]);
     expect(r.recommended[0].matchedTags).toEqual(['CSE', 'Mechanical']);
-    expect(r.recommended[4].matchedTags).toEqual([]);
+    expect(r.excluded.find(x => x.expert.id === noMatch.id)?.reasons).toEqual(['no_specialization_match']);
   });
 
   it('a specialization match outranks being in the same region', () => {
@@ -89,7 +90,7 @@ describe('ranking', () => {
   it('excluded experts never appear in the ranking, whatever their match', () => {
     const perfectButSameDistrict = expert({ full_name: 'Perfect match', specializations: ['CSE', 'Mechanical', 'Civil'], region_code: 'WR',
       home_district: 'Nashik', home_state: 'Maharashtra' });
-    const ok = expert({ full_name: 'Weak match', specializations: ['Pharmacy'] });
+    const ok = expert({ full_name: 'Weak match', specializations: ['CSE'] });
     const r = matchExperts(inst, [perfectButSameDistrict, ok]);
     expect(r.recommended.map((x) => x.expert.full_name)).toEqual(['Weak match']);
     expect(r.excluded.map((x) => x.expert.full_name)).toEqual(['Perfect match']);

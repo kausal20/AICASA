@@ -23,9 +23,10 @@ export interface MatchExpert {
   assigned?: boolean;
 }
 
-export type ExclusionCode = 'affiliated' | 'declared_conflict' | 'same_district';
+export type ExclusionCode = 'affiliated' | 'declared_conflict' | 'same_district' | 'no_specialization_match';
 
 export const EXCLUSION_TEXT: Record<ExclusionCode, string> = {
+  no_specialization_match: 'Excluded — no specialization match',
   same_district: 'Excluded — same district as institute',
   declared_conflict: 'Excluded — declared conflict',
   affiliated: 'Excluded — affiliated with this institute',
@@ -108,8 +109,9 @@ export function matchExperts(
   const excluded: Excluded[] = [];
   for (const expert of experts) {
     const reasons = exclusionsFor(inst, expert);
-    if (reasons.length) { excluded.push({ expert, reasons, labels: reasons.map((r) => EXCLUSION_TEXT[r]) }); continue; }
     const matchedTags = [...new Set(expert.specializations.map(canonicalTag))].filter((t) => programmeTags.includes(t));
+    if (!matchedTags.length) reasons.push('no_specialization_match');
+    if (reasons.length) { excluded.push({ expert, reasons, labels: reasons.map((r) => EXCLUSION_TEXT[r]) }); continue; }
     recommended.push({ expert, matchedTags, proximity: regionProximity(inst.region_code, expert.region_code), sessionFit: sessionFit(expert, opts.sessionStart, opts.sessionEnd) });
   }
   recommended.sort((a, b) => b.matchedTags.length - a.matchedTags.length || a.proximity - b.proximity || a.expert.full_name.localeCompare(b.expert.full_name));

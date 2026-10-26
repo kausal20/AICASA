@@ -109,7 +109,7 @@ describe('Feature 1: Deficiency Matrix value handling', () => {
     expect((await mk({ approved_intake: 100, intake_increase: true, proposed_intake: 100 }, 'Cons equal')).result).toBe('failed_validation');
     expect((await mk({ approved_intake: 100, intake_increase: true, proposed_intake: 120 }, 'Cons ok')).result).toBe('passed');
     expect((await mk({ approved_intake: 100, intake_increase: true, proposed_intake: 'many' }, 'Cons malformed')).result).toBe('failed_validation');
-    expect((await mk({ approved_intake: 100, intake_increase: false, proposed_intake: 50 }, 'Cons flag off')).result).toBe('not_checked');
+    expect((await mk({ approved_intake: 100, intake_increase: false, proposed_intake: 50 }, 'Cons flag off')).result).toBe('not_applicable');
   });
 
   it('every rule row names the observed input, requirement, rule version and source; synthetic rules are labelled', async () => {

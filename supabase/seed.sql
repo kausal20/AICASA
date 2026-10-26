@@ -657,6 +657,9 @@ begin
   perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
   perform set_config('request.jwt.claim.sub', '', true);
   perform set_config('request.jwt.claim.role', 'service_role', true);
+  perform app.complete_hero_demo_inputs();
+  -- the one evaluation routine records every unmet rule as an open query (same routine the deployed backfill uses)
+  perform app.sync_matrix_deficiencies(x.id) from (select id from applications order by id) x;
   r := app.run_deadline_scan('manual');
 
   return jsonb_build_object('ok', true, 'applications', (select count(*) from applications), 'scan', r);
@@ -739,3 +742,18 @@ insert into public.system_settings (key, value, description) values
   ('evc.assignment_policy', '{"block_declared_conflicts": true, "require_availability_window": false, "max_open_evcs_per_member": 3, "source_reference": "DEMO assignment policy - illustrative, not an AICTE rule"}',
    'EVC assignment checks: block declared conflicts, whether recorded availability is required, and a workload guide.')
 on conflict (key) do nothing;
+
+-- Keep fresh installations aligned with the deployed rule provenance.
+update application_types set form_schema = form_schema ||
+  '[{"key":"principal_count","label":"Number of Principals","type":"number","required":false}]'::jsonb
+where code = 'EOA' and not form_schema @> '[{"key":"principal_count"}]'::jsonb;
+
+-- Verified against APH 2024–27, Annexure 5, pp. 95–96 (PDF pages 111–112).
+-- Government-hosted original: https://cdnbbsr.s3waas.gov.in/s35938b4d054136e5d59ada6ec9c295d7a/uploads/2025/03/2025031399.pdf
+update compliance_rules set source_reference = 'AICTE Approval Process Handbook 2024–27 — Annexure 5, sections 5.1–5.3 (faculty/student ratios)', is_synthetic = false
+where code = 'student_faculty_ratio' and params->'threshold_by_level' = '{"ug_engg":20,"pg_engg":15,"diploma":25}'::jsonb;
+update compliance_rules set source_reference = 'AICTE Approval Process Handbook 2024–27 — Annexure 5.2, UG Engineering cadre ratio 1:2:6 plus Principal. Prototype uses declared approved intake and whole-person rounding; PG/Diploma cadre allocation is not verified.', is_synthetic = false
+where code = 'faculty_cadre_ratio' and params->'ratios' = '[1,2,6]'::jsonb;
+update compliance_rules set source_reference = 'Demonstration configuration', explanation = ''
+where is_synthetic and code in ('land_area_min','built_up_min','labs_min','library_books_min','computers_required');
+

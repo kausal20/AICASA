@@ -9,6 +9,11 @@ export function previousVersionId(d: Deficiency, s: DeficiencySubmission): strin
   const earlier = (d.deficiency_submissions ?? []).filter((x) => x.attempt < s.attempt && x.document_version_id).at(-1);
   return earlier?.document_version_id ?? d.affected_document_version_id ?? null;
 }
+/** The "inferred, not proven" caveat is only for legacy records: a stored version (captured at raise, or proven from the seed sequence) or an earlier attempt is proof enough. */
+export function showsInferredCaveat(d: Deficiency, s: DeficiencySubmission): boolean {
+  const hasEarlierAttempt = (d.deficiency_submissions ?? []).some((x) => x.attempt < s.attempt && x.document_version_id);
+  return !hasEarlierAttempt && d.affected_version_basis !== 'captured_at_raise' && d.affected_version_basis !== 'seed_fixture_verified';
+}
 import { StatusBadge, DueBadge } from '@/components/ui/Badge';
 import { ReopenWindowButton, useQueryWindow, WindowBadge } from './QueryWindow';
 import { Button } from '@/components/ui/Button';
@@ -69,7 +74,7 @@ export function DeficiencyCard({ d, mode, institutionId, canReview }: {
                     const prev = previousVersionId(d, s);
                     return prev && prev !== s.document_version_id ? (
                       <div className="mt-2"><Disclosure summary="Compare with the earlier version">
-                        {d.deficiency_submissions!.some((x) => x.attempt < s.attempt && x.document_version_id) || d.affected_version_basis === 'captured_at_raise' ? null : (
+                        {!showsInferredCaveat(d, s) ? null : (
                           <p className="mb-2 rounded-md bg-warning-soft px-3 py-2 text-xs text-[#7a5100]">The earlier version is inferred, not proven: the system did not record which version was on file when this memo was raised.</p>
                         )}
                         <VersionCompare oldVersionId={prev} newVersionId={s.document_version_id} />

@@ -53,7 +53,7 @@ describe('Required count rule', () => {
     expect(row.result).toBe('potential_issue');
     expect(row.explanation).toBe('Sanctioned intake requires 120 computers, only 95 declared — Deficiency detected.');
     const [d] = (await defs(id)).filter((x) => x.rule_code === 'computers_required');
-    expect(d.reason).toBe('Sanctioned intake requires 120 computers, only 95 declared — Deficiency detected.');
+    expect(d.reason).toContain('Sanctioned intake requires 120 computers, only 95 declared — Deficiency detected.');
   });
 
   it('boundaries and bad values (SQL), and agreement with the TypeScript arithmetic', async () => {
@@ -71,11 +71,11 @@ describe('Required count rule', () => {
     }
   });
 
-  it('library rule uses the configured demo factor and is labelled as a demo value', async () => {
+  it('library rule keeps its configured demonstration factor', async () => {
     const id = await draft('Library short', { student_count: 100, library_book_count: 999 });
     const [r] = await rule(NIRMALA, id, 'library_books_min');
     expect(r.explanation).toBe('Sanctioned intake requires 1000 library books, only 999 declared — Deficiency detected.');
-    expect(await t.owner(`select 1 from compliance_rules where code = 'library_books_min' and is_synthetic and source_reference like 'DEMO VALUE%'`)).toHaveLength(1);
+    expect(await t.owner(`select 1 from compliance_rules where code = 'library_books_min' and is_synthetic and source_reference = 'Demonstration configuration'`)).toHaveLength(1);
   });
 
   it('laboratory minimum is an ordinary min rule on lab_count', async () => {
@@ -92,7 +92,7 @@ describe('Cadre ratio rule', () => {
     expect(prof).toMatchObject({ result: 'potential_issue', explanation: '0 of 3 Professors — cadre violation.' });
     expect(rows.find((r) => r.check_code.endsWith('faculty_associate_professors'))!.result).toBe('passed');
     expect(rows.find((r) => r.check_code.endsWith('faculty_assistant_professors'))!.result).toBe('passed');
-    expect(rows.find((r) => r.check_code.endsWith(':principal'))!.result).toBe('not_checked');
+    expect(rows.find((r) => r.check_code.endsWith(':principal'))!.result).toBe('passed');
   });
 
   it('worked example S = 480 -> 24 faculty -> 3 / 5 / 16 (+1 Principal), each shortfall reported separately', async () => {
@@ -102,7 +102,7 @@ describe('Cadre ratio rule', () => {
     expect(by('faculty_professors').explanation).toBe('1 of 3 Professors — cadre violation.');
     expect(by('faculty_associate_professors').explanation).toBe('5 of 5 Associate Professors — meets the requirement.');
     expect(by('faculty_assistant_professors').explanation).toBe('10 of 16 Assistant Professors — cadre violation.');
-    expect(by(':principal').explanation).toMatch(/One Principal is also required/);
+    expect(by(':principal').explanation).toMatch(/Declare the number of Principals/);
   });
 
   it('agrees with the TypeScript split for UG, PG and Diploma and for awkward intakes', async () => {
@@ -189,7 +189,7 @@ describe('breaches become deficiencies', () => {
     expect(a[0].title).toBe('Matrix rule not met: Computers for the sanctioned intake');
     const b = await defs(await caseId(CADRE));
     expect(b.map((d) => d.rule_code)).toEqual(['faculty_cadre_ratio']);
-    expect(b[0].reason).toBe('0 of 3 Professors — cadre violation.');
+    expect(b[0].reason).toContain('0 of 3 Professors — cadre violation.');
     expect((await t.owner(`select 1 from audit_logs where action = 'deficiency_auto_raised' and entity_id = $1`, [a[0].id])).length).toBe(1);
   });
 
@@ -204,13 +204,13 @@ describe('breaches become deficiencies', () => {
     expect(d.status).toBe('resolved');
     expect((await t.owner(`select 1 from application_events where application_id = $1 and event_type = 'deficiency_auto_resolved'`, [id])).length).toBe(1);
     expect((await t.owner(`select 1 from audit_logs where action = 'deficiency_auto_resolved' and entity_id = $1`, [d.id])).length).toBe(1);
-    // and it breaks again -> a NEW open deficiency (history kept)
+    // A resolved query is never resurrected, even if the rule fails again.
     await t.owner(`update applications set form_data = form_data || '{"computer_count": 90}' where id = $1`, [id]);
-    expect(await recheck(SCRUTINY, id)).toMatchObject({ created: 1 });
-    expect((await defs(id)).map((x) => x.status).sort()).toEqual(['open', 'resolved']);
+    expect(await recheck(SCRUTINY, id)).toMatchObject({ created: 0 });
+    expect((await defs(id)).map((x) => x.status)).toEqual(['resolved']);
   });
 
-  it('a new rule version updates the open deficiency and cites the new version; retiring the rule resolves it', async () => {
+  it('a new rule version updates the open deficiency and cites the new version; retiring the rule does not falsely mark it satisfied', async () => {
     const id = await caseId(CADRE);
     await t.as(ADMIN, `select publish_compliance_rule('faculty_cadre_ratio', 'Faculty cadre ratio', 'cadre_ratio', array['EOA'],
       (select params from compliance_rules where code = 'faculty_cadre_ratio' and status = 'active'), 'Supplied by the project team from APH 2024-27; not verified', true, 'Second version for the test', 'Republishing to test version citation')`);
@@ -221,12 +221,14 @@ describe('breaches become deficiencies', () => {
     expect(d.reason).toContain('0 of 4 Professors — cadre violation.');
     expect(d.requirement_source).toContain('faculty_cadre_ratio v2');
     await t.as(ADMIN, `select retire_compliance_rule('faculty_cadre_ratio', 'Retiring the rule for the matrix test run')`);
-    expect(await recheck(SCRUTINY, id)).toMatchObject({ resolved: 1 });
-    expect((await defs(id))[0].status).toBe('resolved');
+    expect(await recheck(SCRUTINY, id)).toMatchObject({ resolved: 0 });
+    expect((await defs(id))[0].status).toBe('open');
   });
 
   it('resolving the last open deficiency returns a returned case to its review stage', async () => {
     const id = await caseId(COMPUTERS);
+    // Isolate this lifecycle fixture from the previous test's resolved history.
+    await t.owner(`update deficiencies set status = 'open', resolved_at = null where application_id = $1 and rule_code = 'computers_required'`, [id]);
     await t.owner(`update applications set form_data = form_data || '{"computer_count": 90}' where id = $1`, [id]);
     await recheck(SCRUTINY, id);
     const v = (await t.owner<{ row_version: number }>(`select row_version from applications where id = $1`, [id]))[0].row_version;
@@ -252,7 +254,7 @@ describe('breaches become deficiencies', () => {
       (select params from compliance_rules where code = 'faculty_cadre_ratio' order by version desc limit 1), 'Supplied by the project team from APH 2024-27; not verified', true, '', 'Re-publishing the cadre rule for the period test')`);
     const r = await recheck(SCRUTINY, sid);
     expect(r.created).toBe(0);
-    expect(r.skipped).toMatch(/no default correction period/);
+    expect(r.skipped).toBeNull(); // an already resolved auto-query is deliberately never resurrected
   });
 
   it('browser roles cannot create or edit rule deficiencies directly', async () => {

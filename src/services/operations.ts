@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { unwrap } from '@/lib/errors';
+import { ensureDocumentPrechecks } from './documents';
 import type {
   AnalyticsSummary, ComplianceSubmission, ComplianceVerification, Deficiency, EscalationRow, EvcAssignmentCheck, EvcAvailability,
   EvcConflictDeclaration, EvcHistory, EvcRow, MatrixRow, NotificationRow, ObligationRow, ReviewTask, TaskRow, ValidityRow, VersionComparison,
@@ -22,6 +23,7 @@ export async function listDeficiencies(opts: { applicationId?: string; openOnly?
 
 /** dueAt null = the server applies the configured default correction period (or refuses if none is configured). */
 export async function raiseDeficiency(input: { applicationId: string; title: string; reason: string; source: string; correction: string; docType?: string; dueAt: string | null }) {
+  if (input.docType) await ensureDocumentPrechecks(input.applicationId, input.docType);
   return unwrap(await supabase.rpc('raise_deficiency', {
     p_application_id: input.applicationId, p_title: input.title, p_reason: input.reason, p_requirement_source: input.source,
     p_requested_correction: input.correction, p_doc_type: input.docType ?? null, p_due_at: input.dueAt,
@@ -41,6 +43,9 @@ export async function returnForCorrection(applicationId: string, version: number
 }
 
 export async function submitCorrection(deficiencyId: string, response: string, documentVersionId?: string | null) {
+  const query = unwrap(await supabase.from('deficiencies').select('application_id, doc_type').eq('id', deficiencyId).single()) as { application_id: string; doc_type: string | null } | null;
+  if (!query) throw new Error('Query not found. Refresh and try again.');
+  if (query.doc_type) await ensureDocumentPrechecks(query.application_id, query.doc_type);
   return unwrap(await supabase.rpc('submit_deficiency_correction', {
     p_deficiency_id: deficiencyId, p_response_text: response, p_document_version_id: documentVersionId ?? null,
   }));

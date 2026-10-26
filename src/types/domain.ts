@@ -91,6 +91,7 @@ export interface DocumentVersion {
 
 export type FindingOutcome = 'passed' | 'potential_issue' | 'missing_information' | 'extraction_failed' | 'manual_review' | 'not_checked';
 export interface CheckRun {
+  extracted_text: string | null;
   id: string; document_version_id: string; application_id: string | null; institution_id: string; engine: string;
   checklist_version: number | null; status: 'running' | 'completed' | 'failed'; extraction_status: string;
   extraction_method: string | null; steps: { code: string; label: string; status: string; detail?: string }[];
@@ -113,7 +114,7 @@ export interface Deficiency {
   auto_generated: boolean; rule_id: string | null; rule_code: string | null; rule_version: number | null;
   affected_document_version_id: string | null;
   /** captured_at_raise = recorded when the memo was raised; inferred_unverified = reconstructed later and not proven; null = none */
-  affected_version_basis: 'captured_at_raise' | 'inferred_unverified' | null;
+  affected_version_basis: 'captured_at_raise' | 'seed_fixture_verified' | 'inferred_unverified' | null;
   deficiency_submissions?: DeficiencySubmission[]; deficiency_reviews?: DeficiencyReview[];
   applications?: { reference: string; title: string; institution_id: string; status: ApplicationStatus };
 }
@@ -196,7 +197,7 @@ export interface AnalyticsSummary {
 export interface DirectoryEntry { id: string; full_name: string; designation: string | null; roles: string[] | null }
 
 // ---- Deficiency Matrix ----------------------------------------------------
-export type MatrixResult = 'passed' | 'potential_issue' | 'failed_validation' | 'extraction_failed' | 'not_checked' | 'manual_review';
+export type MatrixResult = 'passed' | 'potential_issue' | 'failed_validation' | 'extraction_failed' | 'not_checked' | 'not_applicable' | 'manual_review';
 export interface MatrixRow {
   section: 'form' | 'documents' | 'duplicates' | 'precheck' | 'rules'; check_code: string; label: string; input_value: string;
   requirement: string; result: MatrixResult; rule_ref: string; source: string; explanation: string; is_synthetic: boolean;

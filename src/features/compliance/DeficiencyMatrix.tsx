@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertOctagon, CheckCircle2, CircleDashed, CircleHelp, FileWarning, ListChecks, ScanEye, TriangleAlert } from 'lucide-react';
@@ -19,19 +19,25 @@ export const RESULT: Record<MatrixResult, { label: string; tone: Tone; icon: typ
   manual_review: { label: 'Manual review required', tone: 'info', icon: ScanEye },
   extraction_failed: { label: 'Extraction failed', tone: 'warning', icon: FileWarning },
   not_checked: { label: 'Not checked', tone: 'neutral', icon: CircleDashed },
+  not_applicable: { label: 'Not applicable', tone: 'neutral', icon: CircleDashed },
   passed: { label: 'Passed', tone: 'success', icon: CheckCircle2 },
 };
-const ORDER: MatrixResult[] = ['failed_validation', 'potential_issue', 'manual_review', 'extraction_failed', 'not_checked', 'passed'];
+const ORDER: MatrixResult[] = ['failed_validation', 'potential_issue', 'manual_review', 'extraction_failed', 'not_checked', 'not_applicable', 'passed'];
 const SECTIONS: Record<MatrixRow['section'], string> = {
   form: 'Form fields', documents: 'Checklist documents', duplicates: 'Duplicate files', precheck: 'Document pre-check', rules: 'Configured rules',
 };
 
 /**
- * Deficiency Matrix: server-evaluated pre-submission checks for one case. Advisory only; it never changes the case.
+ * Server-evaluated checks; evaluations reconcile rule queries for cases under processing.
  * `audience` adjusts the next-action wording for the institution (before submitting) or the scrutinising officer.
  */
 export function DeficiencyMatrix({ applicationId, audience }: { applicationId: string; audience: 'institution' | 'staff' }) {
   const q = useQuery({ queryKey: ['matrix', applicationId], queryFn: () => getDeficiencyMatrix(applicationId) });
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!q.dataUpdatedAt) return;
+    for (const key of ['deficiencies', 'application', 'applications', 'navcounts']) void qc.invalidateQueries({ queryKey: [key] });
+  }, [q.dataUpdatedAt, qc]);
   const { workspace, can } = useAuth();
   const canRecheck = audience === 'staff' && workspace === 'officer' && can('scrutiny');
   const recheck = useAction(() => recheckMatrixDeficiencies(applicationId), {
@@ -42,7 +48,6 @@ export function DeficiencyMatrix({ applicationId, audience }: { applicationId: s
   const rows = useMemo(() => (q.data ?? []).slice().sort((a, b) => a.sort_order - b.sort_order), [q.data]);
   const counts = useMemo(() => Object.fromEntries(ORDER.map((r) => [r, rows.filter((x) => x.result === r).length])) as Record<MatrixResult, number>, [rows]);
   const visible = showPassed ? rows : rows.filter((r) => r.result !== 'passed');
-  const synthetic = rows.some((r) => r.is_synthetic);
 
   const failed = counts.failed_validation;
   const attention = counts.potential_issue + counts.manual_review + counts.extraction_failed;
@@ -104,7 +109,6 @@ export function DeficiencyMatrix({ applicationId, audience }: { applicationId: s
             A configured rule that is not met is recorded as an open deficiency on the case, citing the rule and its version, and it is resolved automatically when a re-check shows the rule is met
             (see the Deficiencies tab). The matrix never rejects an application, and passing it does not mean approval: scrutiny and decisions stay with authorised officers.
             Figures are as declared by the institution, not verified measurements.{audience === 'institution' && ' Rule results become deficiencies when you submit.'}
-            {synthetic && ' Items marked "Synthetic rule" use demonstration values, not AICTE thresholds.'}
           </p>
         </>
       )}
@@ -121,7 +125,6 @@ function MatrixItem({ r }: { r: MatrixRow }) {
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2 text-[13.5px] font-medium text-ink">
           {r.label}
-          {r.is_synthetic && <Badge tone="warning">Synthetic rule</Badge>}
         </p>
         <p className="mt-0.5 text-xs text-ink-soft tabular">
           Input: <span className="font-medium text-ink">{r.input_value}</span> <span aria-hidden>·</span> Requirement: {r.requirement}

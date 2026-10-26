@@ -65,7 +65,7 @@ export function ComplianceRulesPanel() {
                 <Td><p className="font-medium">{r.label}</p><p className="text-xs text-ink-soft">{r.code} · v{r.version}</p></Td>
                 <Td className="text-[13px]">{ruleSummary(r)}<p className="text-xs text-ink-soft">{KINDS[r.kind] ?? r.kind}</p></Td>
                 <Td><div className="flex flex-wrap gap-1">{r.applies_to.map((x) => <Badge key={x} tone="neutral">{x}</Badge>)}</div></Td>
-                <Td className="max-w-[320px] text-[13px]">{r.is_synthetic && <Badge tone="warning" className="mb-1">Synthetic rule</Badge>}<p className="text-xs text-ink-soft">{r.source_reference}</p></Td>
+                <Td className="max-w-[320px] text-[13px]"><p className="text-xs text-ink-soft">{r.source_reference}</p></Td>
                 <Td className="text-right">{canEdit && (
                   <div className="flex justify-end gap-1.5">
                     <Button size="sm" variant="secondary" onClick={() => setPublish(r)}>New version</Button>
@@ -77,6 +77,7 @@ export function ComplianceRulesPanel() {
           </tbody>
         </DataTable>
       )}
+      <p className="border-t border-line px-5 py-3 text-xs text-ink-soft">Demonstration values — verify against the current APH before real use.</p>
       {retired.length > 0 && (
         <p className="border-t border-line px-5 py-3 text-xs text-ink-soft">{retired.length} earlier or retired version{retired.length === 1 ? '' : 's'} kept on record
           ({retired.slice(0, 4).map((r) => `${r.code} v${r.version}${r.retired_at ? `, ${fmtDateTime(r.retired_at)}` : ''}`).join('; ')}{retired.length > 4 ? '; …' : ''}).</p>

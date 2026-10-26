@@ -1,5 +1,6 @@
 import { supabase, DOCUMENT_BUCKET } from '@/lib/supabase';
 import { unwrap } from '@/lib/errors';
+import { toast } from 'sonner';
 import type { CheckRun, DocumentRecord, DocumentVersion } from '@/types/domain';
 
 export const ALLOWED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'];
@@ -65,11 +66,31 @@ export async function uploadDocument(input: {
     xhr.send(file);
   });
 
-  return unwrap(await supabase.rpc('register_document_version', {
+  const version = unwrap(await supabase.rpc('register_document_version', {
     p_institution_id: input.institutionId, p_application_id: input.applicationId, p_doc_type: input.docType,
     p_title: input.title ?? null, p_storage_path: path, p_file_name: file.name, p_sha256: hash,
     p_replaced_reason: input.replacedReason ?? null,
   })) as DocumentVersion;
+  if (input.applicationId) {
+    const queries = unwrap(await supabase.from('deficiencies').select('id').eq('application_id', input.applicationId).eq('doc_type', input.docType));
+    if (queries.length) {
+      try { await ensureDocumentPrechecks(input.applicationId, input.docType); }
+      catch { toast.warning('Your version is saved. Content checking failed; it will be retried before submitting the clarification.'); }
+    }
+  }
+  return version;
+}
+
+/** Read the actual bytes of every version used by a document query, including its earlier baseline. */
+export async function ensureDocumentPrechecks(applicationId: string, docType: string) {
+  const docs = await listDocuments({ applicationId });
+  const versions = docs.filter((d) => d.doc_type === docType).flatMap((d) => d.document_versions ?? []);
+  const checks = await listCheckRuns(versions.map((v) => v.id));
+  for (const v of versions) {
+    const latest = checks.find((r) => r.document_version_id === v.id);
+    if (latest?.status === 'completed' && (latest.extracted_text != null || latest.extraction_status === 'unavailable')) continue;
+    await runPrecheck(v.id);
+  }
 }
 
 /** Short-lived (60 s) signed URL; storage RLS decides whether it is issued. */
@@ -95,5 +116,6 @@ export async function runPrecheck(versionId: string) {
     } catch { /* keep default */ }
     throw new Error(msg);
   }
+  if (data?.status === 'failed') throw new Error(data.error ?? 'Content checking failed. Please retry.');
   return data as { run_id: string; status: string; error?: string };
 }

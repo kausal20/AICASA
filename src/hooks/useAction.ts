@@ -17,6 +17,9 @@ export function useAction<TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>,
     onSuccess: (r) => {
       if (opts.success) toast.success(typeof opts.success === 'function' ? opts.success(r) : opts.success);
       for (const k of opts.invalidate ?? []) qc.invalidateQueries({ queryKey: k });
+      if (opts.invalidate?.some((k) => k[0] === 'deficiencies')) {
+        for (const key of ['application', 'applications', 'navcounts']) void qc.invalidateQueries({ queryKey: [key] });
+      }
       opts.onSuccess?.(r);
     },
     onError: (e) => toast.error(errorMessage(e)),

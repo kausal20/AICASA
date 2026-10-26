@@ -22,7 +22,8 @@ export function useNavCounts(): Partial<Record<BadgeKey, number>> {
       const out: Partial<Record<BadgeKey, number>> = {};
       out.unread = await count(supabase.from('notifications').select('id', head).is('read_at', null));
       if (workspace === 'institution' && institution) {
-        out.returned = await count(supabase.from('v_applications').select('id', head).eq('institution_id', institution.id).eq('status', 'returned_for_correction'));
+        out.returned = await count(supabase.from('deficiencies').select('id, applications!inner(institution_id)', head)
+          .eq('applications.institution_id', institution.id).not('status', 'in', '(resolved,withdrawn)'));
         out.oblOverdue = await count(supabase.from('v_obligations').select('id', head).eq('institution_id', institution.id).eq('effective_status', 'overdue'));
       }
       if (workspace === 'officer') {

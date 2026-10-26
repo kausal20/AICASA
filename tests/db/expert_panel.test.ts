@@ -89,9 +89,9 @@ describe('recommending a panel', () => {
     expect(reason('Anil Wagh')).toEqual(['Excluded — same district as institute']);        // no declaration involved
     expect(reason('Kavita Joshi')).toEqual(['Excluded — affiliated with this institute']); // no declaration involved
     expect(reason('Rohan Deshmukh')).toEqual(['Excluded — declared conflict']);
-    expect(m.excluded).toHaveLength(3);
+    expect(m.excluded).toHaveLength(4);
     expect(m.recommended.map((x) => x.expert.full_name.replace(' (Demo)', ''))).toEqual([
-      'Dr. Farida Shaikh', 'Prof. Suresh Babu', 'Dr. Lakshmi Narayanan', 'Prof. Sudipta Banerjee', 'Dr. Meenal Kapoor',
+      'Dr. Farida Shaikh', 'Prof. Suresh Babu', 'Dr. Lakshmi Narayanan', 'Prof. Sudipta Banerjee',
     ]);
     expect(m.recommended[0].matchedTags).toEqual(['CSE', 'Mechanical']);
   });
@@ -100,8 +100,9 @@ describe('recommending a panel', () => {
     const n2 = await evcOf('Extension of approval with additional division 2027-28');
     const r = (await t.as<{ r: { institution: MatchInstitution; programme_text: string; experts: MatchExpert[] } }>(EVC, `select expert_match_inputs($1) as r`, [n2.id]))[0].r;
     const m = matchExperts(r.institution, r.experts, { programmeText: r.programme_text });
-    expect(m.excluded).toHaveLength(0);                       // nobody lives in Pune, works at Nirmala or declared a conflict there
-    expect(m.recommended.length).toBe(8);
+    expect(m.excluded).toHaveLength(1);
+    expect(m.excluded[0].reasons).toContain('no_specialization_match');
+    expect(m.recommended.length).toBe(7);
   });
 
   it('only AICTE staff can ask for recommendations', async () => {

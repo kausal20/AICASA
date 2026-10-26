@@ -10,7 +10,7 @@ const COMPLIANCE = 'officer.wr.compliance@aicasa-demo.test';
 const SR = 'officer.sr@aicasa-demo.test';
 const ADMIN = 'admin.national@aicasa-demo.test';
 const ADMIN_WR = 'admin.wr@aicasa-demo.test';
-const RESULTS = ['passed', 'potential_issue', 'failed_validation', 'extraction_failed', 'not_checked', 'manual_review'];
+const RESULTS = ['passed', 'potential_issue', 'failed_validation', 'extraction_failed', 'not_checked', 'not_applicable', 'manual_review'];
 
 let t: TestDb;
 let nirmala: string;
@@ -69,7 +69,7 @@ describe('Deficiency Matrix', () => {
     expect(by('field:approved_intake').result).toBe('passed');
     expect(by('document:affidavit').result).toBe('failed_validation');
     expect(by('document:fire_safety_certificate').result).toBe('failed_validation');
-    expect(by('document:faculty_list').result).toBe('not_checked');
+    expect(by('document:faculty_list').result).toBe('not_applicable');
     expect(by('rule:land_area_min')).toMatchObject({ result: 'potential_issue', is_synthetic: true, input_value: '2 acres' });
     expect(by('rule:built_up_min').result).toBe('not_checked');
     expect(by('rule:student_faculty_ratio')).toMatchObject({ result: 'potential_issue', input_value: '1:22.5' });
@@ -98,7 +98,7 @@ describe('Deficiency Matrix', () => {
     const fire = await upload(NIRMALA, nirmala, draft, 'fire_safety_certificate', 'fire.pdf', null, sha);
     let rows = await matrix(NIRMALA, draft);
     expect(rows.filter((x) => x.section === 'duplicates' && x.result === 'potential_issue').length).toBe(2);
-    expect(rows.filter((x) => x.section === 'precheck' && x.result === 'not_checked').length).toBe(2);
+    expect(rows.filter((x) => x.section === 'precheck' && x.result === 'manual_review').length).toBe(2);
     await precheck(NIRMALA, fire.id, 'failed', [{ check_code: 'readability', check_name: 'Readable content', outcome: 'extraction_failed',
       severity: 'medium', explanation: 'No text layer.' }]);
     rows = await matrix(NIRMALA, draft);

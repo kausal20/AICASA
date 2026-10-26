@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 import { ArrowLeft, KeyRound, ShieldAlert } from 'lucide-react';
 import { supabase, isConfigured } from '@/lib/supabase';
 import { Button, ButtonLink } from '@/components/ui/Button';
-import { TextField } from '@/components/ui/Field';
+import { SelectField, TextField } from '@/components/ui/Field';
 import { Notice } from '@/components/ui/States';
 import { Wordmark } from '@/components/layout/Wordmark';
 import { useAuth } from './AuthProvider';
@@ -40,6 +40,23 @@ function NotConfigured() {
 
 const OPEN_DEMO = import.meta.env.VITE_OPEN_DEMO === 'true';
 
+/** Asks the demo-session function for a one-time token for the persona's synthetic account and signs in with it. */
+async function startDemoSession(persona: string) {
+  const { data, error } = await supabase.functions.invoke('demo-session', { body: { persona } });
+  if (error || !data?.token_hash) {
+    let msg = 'Could not start the demo.';
+    try { const b = await (error as { context?: Response }).context?.json(); if (b?.error) msg = b.error; } catch { /* default */ }
+    throw new Error(data?.error ?? msg);
+  }
+  const { error: vErr } = await supabase.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' });
+  if (vErr) throw vErr;
+}
+
+/** The one shared demonstration login shown on the sign-in page. The chosen role decides which synthetic account opens. */
+const DEMO_EMAIL = 'demo123@gmail.com';
+const DEMO_PASSWORD = 'Demo@1234';
+const DEMO_ROLES: [persona: string, label: string][] = [['institution', 'College / institute'], ['officer', 'Officer'], ['admin', 'Administrative']];
+
 /** TEMPORARY open-demo entry: no credentials. The server function checks a database switch and mints a one-time token. */
 function DemoPicker() {
   const nav = useNavigate();
@@ -48,14 +65,7 @@ function DemoPicker() {
   const enter = async (persona: string) => {
     setErr(null); setBusy(persona);
     try {
-      const { data, error } = await supabase.functions.invoke('demo-session', { body: { persona } });
-      if (error || !data?.token_hash) {
-        let msg = 'Could not start the demo.';
-        try { const b = await (error as { context?: Response }).context?.json(); if (b?.error) msg = b.error; } catch { /* default */ }
-        throw new Error(data?.error ?? msg);
-      }
-      const { error: vErr } = await supabase.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' });
-      if (vErr) throw vErr;
+      await startDemoSession(persona);
       nav('/app', { replace: true });
     } catch (e) { setErr(errorMessage(e)); setBusy(null); }
   };
@@ -79,7 +89,7 @@ function DemoPicker() {
   );
 }
 
-const signInSchema = z.object({ email: z.string().email('Enter a valid email address.'), password: z.string().min(1, 'Enter your password.') });
+const signInSchema = z.object({ email: z.string().email('Enter a valid email address.'), password: z.string().min(1, 'Enter your password.'), role: z.string() });
 
 export function SignInPage() {
   const { status } = useAuth();
@@ -87,12 +97,16 @@ export function SignInPage() {
   const loc = useLocation() as { state?: { from?: string } };
   const [err, setErr] = useState<string | null>(null);
   const prefill = new URLSearchParams(window.location.search).get('email') ?? '';
-  const form = useForm<z.infer<typeof signInSchema>>({ resolver: zodResolver(signInSchema), defaultValues: { email: prefill, password: '' } });
+  const form = useForm<z.infer<typeof signInSchema>>({ resolver: zodResolver(signInSchema), defaultValues: { email: prefill || DEMO_EMAIL, password: prefill ? '' : DEMO_PASSWORD, role: DEMO_ROLES[0][0] } });
 
   if (status === 'ready') return <Navigate to={loc.state?.from ?? '/app'} replace />;
 
   const onSubmit = form.handleSubmit(async (v) => {
     setErr(null);
+    if (v.email.trim().toLowerCase() === DEMO_EMAIL && v.password === DEMO_PASSWORD) {
+      try { await startDemoSession(v.role); nav(loc.state?.from ?? '/app', { replace: true }); } catch (e) { setErr(errorMessage(e)); }
+      return;
+    }
     const { error } = await supabase.auth.signInWithPassword({ email: v.email, password: v.password });
     if (error) setErr(error.message === 'Invalid login credentials' ? 'Email or password is incorrect.' : errorMessage(error));
     else nav(loc.state?.from ?? '/app', { replace: true });
@@ -105,13 +119,16 @@ export function SignInPage() {
           {err && <div role="alert"><Notice tone="danger">{err}</Notice></div>}
           <TextField label="Email" type="email" autoComplete="username" required {...form.register('email')} error={form.formState.errors.email?.message} />
           <TextField label="Password" type="password" autoComplete="current-password" required {...form.register('password')} error={form.formState.errors.password?.message} />
+          <SelectField label="Role" required {...form.register('role')}>
+            {DEMO_ROLES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+          </SelectField>
           <Button type="submit" className="w-full" loading={form.formState.isSubmitting}>Sign in</Button>
           <div className="flex justify-between text-[13px]">
             <Link to="/forgot-password" className="text-accent hover:underline">Forgot password?</Link>
             <Link to="/" className="text-ink-soft hover:text-ink">About this prototype</Link>
           </div>
           <p className="border-t border-line pt-4 text-xs leading-relaxed text-ink-soft">
-            Demo accounts are created by the provisioning script described in the README. Sessions expire after an hour of inactivity and refresh automatically while you work.
+            The demonstration login is filled in for you: choose a role and sign in. Sessions expire after an hour of inactivity and refresh automatically while you work.
           </p>
         </form>
       )}

@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 import { ArrowLeft, Eye, EyeOff, KeyRound, ShieldAlert } from 'lucide-react';
 import { supabase, isConfigured } from '@/lib/supabase';
 import { Button, ButtonLink } from '@/components/ui/Button';
-import { TextField } from '@/components/ui/Field';
+import { SelectField, TextField } from '@/components/ui/Field';
 import { Notice } from '@/components/ui/States';
 import { Wordmark } from '@/components/layout/Wordmark';
 import { useAuth } from './AuthProvider';
@@ -52,6 +52,11 @@ async function startDemoSession(persona: string) {
   if (vErr) throw vErr;
 }
 
+/** The shared demonstration login, already filled in on the sign-in page. The role the visitor picks decides which synthetic account opens. */
+const DEMO_EMAIL = 'demo123@gmail.com';
+const DEMO_PASSWORD = 'Demo@1234';
+const DEMO_ROLES: [persona: string, label: string][] = [['institution', 'College / institute'], ['officer', 'Officer'], ['admin', 'Administrative']];
+
 /** TEMPORARY open-demo entry: no credentials. The server function checks a database switch and mints a one-time token. */
 function DemoPicker() {
   const nav = useNavigate();
@@ -84,7 +89,7 @@ function DemoPicker() {
   );
 }
 
-const signInSchema = z.object({ email: z.string().email('Enter a valid email address.'), password: z.string().min(1, 'Enter your password.') });
+const signInSchema = z.object({ email: z.string().email('Enter a valid email address.'), password: z.string().min(1, 'Enter your password.'), role: z.string() });
 
 export function SignInPage() {
   const { status } = useAuth();
@@ -92,13 +97,17 @@ export function SignInPage() {
   const [err, setErr] = useState<string | null>(null);
   const [show, setShow] = useState(false);
   const prefill = new URLSearchParams(window.location.search).get('email') ?? '';
-  const form = useForm<z.infer<typeof signInSchema>>({ resolver: zodResolver(signInSchema), defaultValues: { email: prefill, password: '' } });
+  const form = useForm<z.infer<typeof signInSchema>>({ resolver: zodResolver(signInSchema), defaultValues: { email: prefill || DEMO_EMAIL, password: prefill ? '' : DEMO_PASSWORD, role: DEMO_ROLES[0][0] } });
 
   // the role comes from the account itself; a sign-in never resumes a page remembered from another account or role
   if (status === 'ready') return <Navigate to="/app" replace />;
 
   const onSubmit = form.handleSubmit(async (v) => {
     setErr(null);
+    if (v.email.trim().toLowerCase() === DEMO_EMAIL && v.password === DEMO_PASSWORD) {
+      try { await startDemoSession(v.role); nav('/app', { replace: true }); } catch (e) { setErr(errorMessage(e)); }
+      return;
+    }
     const { error } = await supabase.auth.signInWithPassword({ email: v.email, password: v.password });
     if (error) setErr(error.message === 'Invalid login credentials' ? 'Email or password is incorrect.' : errorMessage(error));
     else nav('/app', { replace: true });
@@ -109,21 +118,24 @@ export function SignInPage() {
       {!isConfigured ? <NotConfigured /> : OPEN_DEMO ? <DemoPicker /> : (
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           {err && <div role="alert"><Notice tone="danger">{err}</Notice></div>}
-          <TextField label="Email" type="email" autoComplete="username" placeholder="name@institution.ac.in" required {...form.register('email')} error={form.formState.errors.email?.message} />
+          <TextField label="Email" type="email" autoComplete="username" required {...form.register('email')} error={form.formState.errors.email?.message} />
           <div className="relative">
-            <TextField label="Password" type={show ? 'text' : 'password'} autoComplete="current-password" placeholder="Your password" required className="pr-11" {...form.register('password')} error={form.formState.errors.password?.message} />
+            <TextField label="Password" type={show ? 'text' : 'password'} autoComplete="current-password" required className="pr-11" {...form.register('password')} error={form.formState.errors.password?.message} />
             <button type="button" onClick={() => setShow(!show)} aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show}
               className="absolute right-1 top-[30px] flex h-9 w-9 items-center justify-center rounded-md text-ink-soft hover:bg-surface-muted hover:text-ink">
               {show ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
             </button>
           </div>
+          <SelectField label="Role" required {...form.register('role')}>
+            {DEMO_ROLES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+          </SelectField>
           <Button type="submit" className="w-full" loading={form.formState.isSubmitting}>Sign in</Button>
           <div className="flex justify-between text-[13px]">
             <Link to="/forgot-password" className="text-accent hover:underline">Forgot password?</Link>
             <Link to="/" className="text-ink-soft hover:text-ink">About this prototype</Link>
           </div>
           <p className="border-t border-line pt-4 text-xs leading-relaxed text-ink-soft">
-            Your workspace follows your account: institutions, officers and administrators each land on their own dashboard. Sessions expire after an hour of inactivity and refresh automatically while you work.
+            The demonstration login is filled in for you: choose a role and sign in. Sessions expire after an hour of inactivity and refresh automatically while you work.
           </p>
         </form>
       )}

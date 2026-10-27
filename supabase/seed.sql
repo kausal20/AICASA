@@ -660,6 +660,10 @@ begin
   perform app.complete_hero_demo_inputs();
   -- the one evaluation routine records every unmet rule as an open query (same routine the deployed backfill uses)
   perform app.sync_matrix_deficiencies(x.id) from (select id from applications order by id) x;
+  -- the case officers send the Nirmala rule queries to the institution (same function as the deployed demo)
+  perform app.demo_send_matrix_queries();
+  perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  perform set_config('request.jwt.claim.role', 'service_role', true);
   r := app.run_deadline_scan('manual');
 
   return jsonb_build_object('ok', true, 'applications', (select count(*) from applications), 'scan', r);

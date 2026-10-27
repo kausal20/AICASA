@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import type { Capability, Role } from '@/types/domain';
 import { PermissionState } from '@/components/ui/States';
+import { responsibilityLabel } from '@/lib/responsibilities';
 
 export function FullPageSpinner({ label = 'Loading' }: { label?: string }) {
   return (
@@ -28,7 +29,7 @@ export function RequireWorkspace({ roles, capability, children }: { roles: Role[
   const { workspace, can } = useAuth();
   if (!workspace || !roles.includes(workspace)) return <PermissionState />;
   if (capability && !can(capability)) {
-    return <PermissionState body={`This area needs the "${capability.replace('_', ' ')}" responsibility, which your account does not hold.`} />;
+    return <PermissionState body={`This area needs the "${responsibilityLabel(capability)}" responsibility, which your account does not hold.`} />;
   }
   return <>{children}</>;
 }

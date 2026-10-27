@@ -7,7 +7,7 @@ export const ALLOWED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'tex
 export const MAX_BYTES = 10 * 1024 * 1024;
 
 export async function listDocuments(opts: { institutionId?: string; applicationId?: string | null }) {
-  let q = supabase.from('documents').select('*, document_versions(*)').order('updated_at', { ascending: false });
+  let q = supabase.from('documents').select('*, document_versions(*), applications(reference)').order('updated_at', { ascending: false });
   if (opts.institutionId) q = q.eq('institution_id', opts.institutionId);
   if (opts.applicationId === null) q = q.is('application_id', null);
   else if (opts.applicationId) q = q.eq('application_id', opts.applicationId);

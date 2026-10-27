@@ -7,7 +7,8 @@ import { Card } from '@/components/ui/Card';
 import { DueBadge, Badge } from '@/components/ui/Badge';
 import { DataTable, PageHeader, Tabs, Td, Th } from '@/components/ui/Page';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/States';
-import { humanize } from '@/lib/format';
+import { humanize, plural, verb } from '@/lib/format';
+import { responsibilityLabel } from '@/lib/responsibilities';
 import type { TaskRow } from '@/types/domain';
 
 function linkFor(t: TaskRow) {
@@ -30,7 +31,7 @@ export function TasksPage() {
         <Card>
           {q.isLoading ? <LoadingRows /> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !rows.length ? <EmptyState title="No open tasks" /> : (
             <>
-              {overdue.length > 0 && <p className="border-b border-line bg-danger-soft px-5 py-2.5 text-[13px] font-medium text-danger">{overdue.length} task{overdue.length > 1 ? 's are' : ' is'} past due.</p>}
+              {overdue.length > 0 && <p className="border-b border-line bg-danger-soft px-5 py-2.5 text-[13px] font-medium text-danger">{plural(overdue.length, 'task')} {verb(overdue.length, 'is', 'are')} past due.</p>}
               <DataTable>
                 <thead><tr><Th>Task</Th><Th>Type</Th><Th>Case</Th><Th>Assignee</Th><Th>Due</Th></tr></thead>
                 <tbody>
@@ -39,7 +40,7 @@ export function TasksPage() {
                       <Td><Link className="font-medium text-accent hover:underline" to={linkFor(t)}>{t.title}</Link></Td>
                       <Td><Badge tone="neutral">{humanize(t.task_type)}</Badge></Td>
                       <Td className="text-[13px]">{t.application_reference ?? '—'}</Td>
-                      <Td className="text-[13px]">{t.assignee_name ?? (t.required_capability ? `Any ${t.required_capability} officer (${t.region_code})` : t.region_code)}</Td>
+                      <Td className="text-[13px]">{t.assignee_name ?? (t.required_capability ? `Any ${responsibilityLabel(t.required_capability)} officer (${t.region_code})` : t.region_code)}</Td>
                       <Td><DueBadge due={t.due_at} /></Td>
                     </tr>
                   ))}

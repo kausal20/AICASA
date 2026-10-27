@@ -52,14 +52,19 @@ export function UsersPage() {
                         <li key={r.id} className="flex flex-wrap items-center gap-1.5 text-[13px]">
                           <Badge tone={r.role === 'admin' ? 'accent' : r.role === 'officer' ? 'primary' : 'neutral'}>{humanize(r.role)} · {r.role === 'institution' ? 'member' : r.region_code ?? 'National'}</Badge>
                           <span className="text-xs text-ink-soft">{r.capabilities.map(responsibilityLabel).join(', ')}</span>
-                          {u.id !== session?.user.id && <button className="text-xs font-medium text-danger hover:underline" onClick={() => setRevoke({ user: u, id: r.id, label: `${humanize(r.role)} ${r.region_code ?? ''}` })}>Revoke</button>}
                         </li>
                       ))}
                       {!u.user_role_assignments.some((r) => r.is_active) && <li className="text-xs text-ink-soft">No active role</li>}
                     </ul>
                   </Td>
                   <Td className="text-[13px]">{u.institution_memberships.filter((m) => m.is_active).map((m) => m.institutions?.name).join(', ') || '—'}</Td>
-                  <Td className="text-right">{u.id !== session?.user.id && <Button size="sm" variant="secondary" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setGrant(u)}>Grant access</Button>}</Td>
+                  <Td className="text-right">{u.id !== session?.user.id && (() => {
+                    // one state-aware action: revoke while access is active, grant once it is not
+                    const active = u.user_role_assignments.find((r) => r.is_active);
+                    return active
+                      ? <Button size="sm" variant="secondary" onClick={() => setRevoke({ user: u, id: active.id, label: `${humanize(active.role)} ${active.region_code ?? ''}`.trim() })}>Revoke access</Button>
+                      : <Button size="sm" variant="secondary" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setGrant(u)}>Grant access</Button>;
+                  })()}</Td>
                 </tr>
               ))}
             </tbody>

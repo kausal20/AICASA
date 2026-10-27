@@ -40,7 +40,7 @@ export function WorkflowsPage() {
               {defs.data!.map((d) => (
                 <li key={d.id}>
                   <button onClick={() => { setSelected(d.id); setViewVersion(null); }} className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${def?.id === d.id ? 'bg-primary-soft' : 'hover:bg-surface-muted'}`}>
-                    <p className="text-[13.5px] font-medium">{d.name}</p><p className="text-xs text-ink-soft">{d.code}</p>
+                    <p className="text-[13.5px] font-medium">{d.name}</p>
                   </button>
                 </li>
               ))}
@@ -98,7 +98,7 @@ export function RouteTables({ stages, transitions }: { stages: WorkflowStage[]; 
         <DataTable><thead><tr><Th>Transition</Th><Th>From → to</Th><Th>Actor</Th><Th>Prerequisites</Th><Th>Reason</Th></tr></thead>
           <tbody>{transitions.map((t) => (
             <tr key={t.id}>
-              <Td className="font-medium">{t.name}<p className="text-xs text-ink-soft">{t.code}{t.records_decision && ' · records decision'}</p></Td>
+              <Td className="font-medium">{t.name}{t.records_decision && <p className="text-xs text-ink-soft">Records the decision</p>}</Td>
               <Td className="text-[13px]">{t.from_stage} → {t.to_stage}</Td>
               <Td className="text-[13px]">{t.is_automatic ? <Badge tone="accent">Automatic</Badge> : `${humanize(t.allowed_role)}${t.required_capability ? ` · ${responsibilityLabel(t.required_capability)}` : ''}`}</Td>
               <Td><div className="flex flex-wrap gap-1">{t.prerequisites.length ? t.prerequisites.map((p) => <Badge key={p} tone="neutral">{p}</Badge>) : '—'}</div></Td>

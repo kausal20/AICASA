@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Ban, CheckCircle2, MapPin, Sparkles, UserPlus } from 'lucide-react';
 import { assignEvcExpert, getExpertMatchInputs } from '@/services/experts';
@@ -97,5 +97,57 @@ function ExcludedRow({ x }: { x: Excluded }) {
         {e.declared_conflicts[0] && <> · “{e.declared_conflicts[0].nature}”</>}
       </p>
     </li>
+  );
+}
+
+export interface PanelPick { experts: string[]; chair: string | null }
+
+/** Choose the expert panel inside the Schedule dialog. Eligible experts come from the same matcher as Recommend panel. */
+export function ExpertPicker({ evcId, value, onChange }: { evcId: string; value: PanelPick; onChange: (v: PanelPick) => void }) {
+  const q = useQuery({ queryKey: ['expert-match', evcId], queryFn: () => getExpertMatchInputs(evcId) });
+  const result = useMemo(() => q.data && matchExperts(q.data.institution, q.data.experts, {
+    programmeText: q.data.programme_text, sessionStart: q.data.evc.scheduled_start, sessionEnd: q.data.evc.scheduled_end,
+  }), [q.data]);
+  const assigned = useMemo(() => (q.data?.experts ?? []).filter((e) => e.assigned).map((e) => e.id), [q.data]);
+  useEffect(() => {
+    // pre-populate once: the experts already on the panel, else the two best-ranked eligible experts with the first as chair
+    if (!result || value.experts.length) return;
+    const start = assigned.length ? assigned : result.recommended.slice(0, 2).map((r) => r.expert.id);
+    if (start.length) onChange({ experts: start, chair: start[0] });
+  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (q.isLoading) return <LoadingRows rows={3} />;
+  if (q.error || !result) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
+  const toggle = (id: string) => {
+    const on = value.experts.includes(id);
+    const experts = on ? value.experts.filter((x) => x !== id) : [...value.experts, id];
+    onChange({ experts, chair: on && value.chair === id ? experts[0] ?? null : value.chair ?? id });
+  };
+  return (
+    <div className="space-y-2">
+      <ul className="divide-y divide-line rounded-lg border border-line">
+        {result.recommended.map((r) => {
+          const on = value.experts.includes(r.expert.id);
+          return (
+            <li key={r.expert.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
+              <label className="flex min-w-0 items-center gap-2">
+                <input type="checkbox" className="h-4 w-4 accent-[#1e3a8a]" checked={on} disabled={assigned.includes(r.expert.id)} onChange={() => toggle(r.expert.id)} />
+                <span className="min-w-0"><span className="font-medium">#{r.rank} {r.expert.full_name}</span>
+                  <span className="block text-xs text-ink-soft">{r.matchedTags.join(', ')} · {r.expert.home_district}, {r.expert.region_code}{assigned.includes(r.expert.id) ? ' · already on the panel' : ''}</span></span>
+              </label>
+              <label className={`flex items-center gap-1.5 text-xs ${on ? 'text-ink' : 'text-ink-faint'}`}>
+                <input type="radio" name={`chair-${evcId}`} className="accent-[#1e3a8a]" disabled={!on} checked={value.chair === r.expert.id} onChange={() => onChange({ ...value, chair: r.expert.id })} />Chair
+              </label>
+            </li>
+          );
+        })}
+        {result.excluded.map((x) => (
+          <li key={x.expert.id} className="flex items-center gap-2 px-3 py-2 text-[13px] opacity-60" aria-disabled>
+            <input type="checkbox" className="h-4 w-4" disabled checked={false} readOnly aria-label={`${x.expert.full_name} cannot be selected`} />
+            <span><span className="font-medium">{x.expert.full_name}</span><span className="block text-xs text-danger">{x.labels.join(' · ')}</span></span>
+          </li>
+        ))}
+      </ul>
+      {!value.chair && <p className="text-xs font-medium text-danger">Select at least one expert and name a chair to schedule.</p>}
+    </div>
   );
 }

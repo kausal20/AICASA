@@ -316,7 +316,7 @@
   .landing-page .lp-main-nav { gap: 12px; }
 }
 @keyframes lp-title-enter { from { transform: translateY(12px); } to { transform: translateY(0); } }
-@keyframes lp-rise-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes lp-rise-in { from { opacity: .9; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes lp-copy-enter { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes lp-copy-enter-back { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes lp-evidence-enter { from { opacity: .3; transform: translateX(18px) scale(.985); } to { opacity: 1; transform: translateX(0) scale(1); } }
@@ -336,3 +336,5 @@
   .landing-page .lp-stage.is-selected { outline: 2px solid Highlight; outline-offset: -2px; }
   .landing-page .lp-stage-progress { background: Highlight; }
 }
+
+.landing-page .lp-preview-skeleton { display: block; height: 52px; border-radius: 10px; background: rgba(148, 163, 184, .18); }

@@ -13,7 +13,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { EmptyState, ErrorState, LoadingRows, Notice } from '@/components/ui/States';
 import { useAction } from '@/hooks/useAction';
-import { fmtDate, humanize } from '@/lib/format';
+import { fmtDate, humanize, relativeDay } from '@/lib/format';
 
 export function ExpiryPage() {
   const { workspace, institution } = useAuth();
@@ -30,9 +30,9 @@ export function ExpiryPage() {
       <PageHeader title="Document validity" description="Lease deeds and other prescribed documents with recorded expiry dates. Renewal reminders follow the configured lead time; an expired date is flagged for follow-up and is not by itself a legal finding."
         actions={workspace === 'institution' && <Button icon={<CalendarPlus className="h-4 w-4" />} onClick={() => setRecord(true)}>Record validity</Button>} />
       <div className="mb-6 grid grid-cols-3 gap-3">
-        <Stat label="Expired" value={n('expired')} tone={n('expired') ? 'danger' : 'neutral'} />
-        <Stat label="Expiring within 90 days" value={n('expiring_soon')} tone={n('expiring_soon') ? 'warning' : 'neutral'} />
-        <Stat label="Valid" value={n('valid')} />
+        <Stat label="Expired" value={q.isLoading ? '…' : n('expired')} tone={n('expired') ? 'danger' : 'neutral'} />
+        <Stat label="Expiring within 90 days" value={q.isLoading ? '…' : n('expiring_soon')} tone={n('expiring_soon') ? 'warning' : 'neutral'} />
+        <Stat label="Valid" value={q.isLoading ? '…' : n('valid')} />
       </div>
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5">
@@ -55,7 +55,7 @@ export function ExpiryPage() {
                   <Td><p className="font-medium">{r.title}</p><p className="text-xs text-ink-soft">{humanize(r.doc_type)} · {r.source_reference}</p></Td>
                   {workspace !== 'institution' && <Td className="text-[13px]">{r.institution_name}<p className="text-xs text-ink-soft">{r.region_code}</p></Td>}
                   <Td><StatusBadge status={r.validity_state} /></Td>
-                  <Td className="tabular text-[13px]">{fmtDate(r.expiry_date)}<p className="text-xs text-ink-soft">{r.validity_state === 'superseded' ? '' : r.days_to_expiry < 0 ? `${-r.days_to_expiry} days ago` : `in ${r.days_to_expiry} days`}</p></Td>
+                  <Td className="tabular text-[13px]">{fmtDate(r.expiry_date)}<p className="text-xs text-ink-soft">{r.validity_state === 'superseded' ? '' : relativeDay(r.expiry_date)}</p></Td>
                   <Td className="text-[13px]">{humanize(r.renewal_state)}{r.renewal_obligation_id && <p><Link to="/app/compliance" className="text-xs text-accent hover:underline">Renewal obligation</Link></p>}</Td>
                 </tr>
               ))}

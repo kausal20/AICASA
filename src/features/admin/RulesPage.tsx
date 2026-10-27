@@ -11,7 +11,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ErrorState, LoadingRows, Notice } from '@/components/ui/States';
 import { useAction } from '@/hooks/useAction';
-import { fmtDateTime, humanize } from '@/lib/format';
+import { codeLabel, fmtDateTime, humanize } from '@/lib/format';
 import type { EscalationRule } from '@/types/domain';
 import { ComplianceRulesPanel } from './ComplianceRulesPanel';
 
@@ -39,7 +39,7 @@ export function RulesPage() {
             <tbody>
               {active.map((r) => (
                 <tr key={r.id}>
-                  <Td><p className="font-medium">{r.code}</p><p className="text-xs text-ink-soft">v{r.version} · {r.is_active ? 'active' : 'disabled'} · <button className="text-accent hover:underline" onClick={() => setHistory(r.code)}>history</button></p></Td>
+                  <Td><p className="font-medium">{codeLabel(r.code)}</p><p className="text-xs text-ink-soft">Version {r.version} · {r.is_active ? 'active' : 'disabled'} · <button className="text-accent hover:underline" onClick={() => setHistory(r.code)}>history</button></p><details className="mt-0.5 text-[11px] text-ink-faint"><summary className="cursor-pointer">Technical details</summary>Rule code {r.code}</details></Td>
                   <Td><Badge tone={r.rule_kind === 'escalation' ? 'danger' : 'warning'}>{humanize(r.rule_kind)}</Badge><p className="mt-1 text-xs text-ink-soft">{humanize(r.entity_type)}</p></Td>
                   <Td className="text-[13px]">{offsetText(r.offset_hours)}</Td>
                   <Td className="text-[13px]">{humanize(r.recipient)}{r.recipient_capability ? ` (${r.recipient_capability})` : ''}</Td>
@@ -77,9 +77,9 @@ function EditRule({ r, onClose }: { r: EscalationRule; onClose: () => void }) {
   const [f, setF] = useState({ offset: String(r.offset_hours), recipient: r.recipient, cap: r.recipient_capability ?? '', channel: r.channel, repeats: String(r.max_repeats), interval: String(r.repeat_interval_hours ?? ''), active: r.is_active, source: r.source_reference, summary: '' });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const act = useAction(() => updateRule({ code: r.code, offsetHours: Number(f.offset), recipient: f.recipient, recipientCapability: f.cap || null, channel: f.channel, maxRepeats: Number(f.repeats), repeatIntervalHours: f.interval ? Number(f.interval) : null, active: f.active, source: f.source, summary: f.summary }),
-    { success: (n) => `${n.code} v${n.version} saved.`, invalidate: [['rules']], onSuccess: onClose });
+    { success: (n) => `${codeLabel(n.code)} version ${n.version} saved.`, invalidate: [['rules']], onSuccess: onClose });
   return (
-    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title={`Change ${r.code}`} description={`${humanize(r.rule_kind)} for ${humanize(r.entity_type)}`}
+    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title={`Change ${codeLabel(r.code)}`} description={`${humanize(r.rule_kind)} for ${humanize(r.entity_type)}`}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={f.summary.trim().length < 10 || Number.isNaN(Number(f.offset))} onClick={() => act.mutate(undefined)}>Save as new version</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField label="Offset (hours from due; negative = before)" type="number" required value={f.offset} onChange={set('offset')} hint={offsetText(Number(f.offset) || 0)} />

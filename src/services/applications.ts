@@ -27,7 +27,7 @@ export interface ApplicationFilters {
 export type SortField = 'updated' | 'due' | 'age' | 'reference' | 'institution' | 'stage' | 'status';
 
 const SORT_COLUMN: Record<SortField, string> = {
-  updated: 'updated_at', due: 'stage_due_at', age: 'age_days', reference: 'reference', institution: 'institution_name',
+  updated: 'updated_at', due: 'due_at', age: 'age_days', reference: 'reference', institution: 'institution_name',
   stage: 'stage_name', status: 'status',
 };
 const DEFAULT_DIR: Record<SortField, 'asc' | 'desc'> = {
@@ -58,7 +58,8 @@ export async function listApplications(f: ApplicationFilters, page = 0) {
   if (f.overdueOnly) q = q.eq('is_overdue', true);
   if (f.group === 'open') q = q.not('status', 'in', '(draft,completed,closed,withdrawn)');
   if (f.group === 'closed') q = q.in('status', ['completed', 'closed']);
-  if (f.group === 'action') q = q.in('status', ['returned_for_correction', 'draft']);
+  // "with the institution" means returned for correction; unsubmitted drafts are counted under Drafts, never here
+  if (f.group === 'action') q = q.eq('status', 'returned_for_correction');
   if (f.ageMin !== undefined) q = q.gte('age_days', f.ageMin);
   if (f.ageMax !== undefined) q = q.lte('age_days', f.ageMax);
   const sort = f.sort ?? 'updated';
@@ -106,6 +107,11 @@ export async function getActiveRouteForType(definitionId: string) {
   const v = unwrap(await supabase.from('workflow_definition_versions').select('id, version').eq('definition_id', definitionId).eq('status', 'active').maybeSingle()) as { id: string; version: number } | null;
   if (!v) return null;
   return { version: v.version, ...(await getRoute(v.id)) };
+}
+
+/** Officers who hold the current stage's responsibility in the case's region (the only ones the server accepts). */
+export async function getEligibleCaseOfficers(applicationId: string) {
+  return unwrap(await supabase.rpc('eligible_case_officers', { p_application_id: applicationId })) as { officer_id: string; full_name: string; designation: string | null }[];
 }
 
 export async function getStageHistory(id: string) {

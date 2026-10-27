@@ -469,7 +469,15 @@ describe('Cross-cutting security checks', () => {
     expect(unpinned).toEqual([]);
     const anon = await t.owner<{ f: string }>(`select p.proname as f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'execute')`);
-    expect(anon).toEqual([]);
+    // the one deliberate exception: aggregate figures and labels of synthetic demo cases for the signed-out landing preview
+    expect(anon).toEqual([{ f: 'landing_snapshot' }]);
+  });
+
+  it('the landing snapshot exposes only synthetic demo cases, aggregate counts and no personal or document data', async () => {
+    const s = (await t.owner<{ s: { totals: Record<string, number>; cases: Record<string, unknown>[] } }>(`select landing_snapshot() as s`))[0].s;
+    expect(Object.keys(s.totals).sort()).toEqual(['applications', 'in_process', 'past_target', 'with_institution']);
+    expect(s.totals.applications).toBe((await t.owner<{ n: number }>(`select count(*)::int as n from applications where is_demo`))[0].n);
+    for (const c of s.cases) expect(Object.keys(c).sort()).toEqual(['current_stage', 'institution', 'next_action', 'reference', 'stages', 'status', 'title']);
   });
 
   it('internal helpers of the new features are not callable by signed-in users', async () => {

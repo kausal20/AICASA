@@ -12,7 +12,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/States';
 import { useAction } from '@/hooks/useAction';
-import { fmtDateTime } from '@/lib/format';
+import { codeLabel, fmtDateTime, plainText } from '@/lib/format';
 import { cadreSplit, requiredCount } from '@/lib/matrixMath';
 import type { ComplianceRule } from '@/types/domain';
 
@@ -62,8 +62,8 @@ export function ComplianceRulesPanel() {
           <tbody>
             {active.map((r) => (
               <tr key={r.id}>
-                <Td><p className="font-medium">{r.label}</p><p className="text-xs text-ink-soft">{r.code} · v{r.version}</p></Td>
-                <Td className="text-[13px]">{ruleSummary(r)}<p className="text-xs text-ink-soft">{KINDS[r.kind] ?? r.kind}</p></Td>
+                <Td><p className="font-medium">{r.label}</p><p className="text-xs text-ink-soft">Version {r.version}</p><details className="mt-0.5 text-[11px] text-ink-faint"><summary className="cursor-pointer">Technical details</summary>Rule code {r.code}</details></Td>
+                <Td className="text-[13px]">{plainText(ruleSummary(r))}<p className="text-xs text-ink-soft">{KINDS[r.kind] ?? r.kind}</p></Td>
                 <Td><div className="flex flex-wrap gap-1">{r.applies_to.map((x) => <Badge key={x} tone="neutral">{x}</Badge>)}</div></Td>
                 <Td className="max-w-[320px] text-[13px]"><p className="text-xs text-ink-soft">{r.source_reference}</p></Td>
                 <Td className="text-right">{canEdit && (
@@ -80,7 +80,7 @@ export function ComplianceRulesPanel() {
       <p className="border-t border-line px-5 py-3 text-xs text-ink-soft">Demonstration values — verify against the current APH before real use.</p>
       {retired.length > 0 && (
         <p className="border-t border-line px-5 py-3 text-xs text-ink-soft">{retired.length} earlier or retired version{retired.length === 1 ? '' : 's'} kept on record
-          ({retired.slice(0, 4).map((r) => `${r.code} v${r.version}${r.retired_at ? `, ${fmtDateTime(r.retired_at)}` : ''}`).join('; ')}{retired.length > 4 ? '; …' : ''}).</p>
+          ({retired.slice(0, 4).map((r) => `${r.label} version ${r.version}${r.retired_at ? `, ${fmtDateTime(r.retired_at)}` : ''}`).join('; ')}{retired.length > 4 ? '; …' : ''}).</p>
       )}
       {publish && <PublishRuleDialog base={publish === 'new' ? null : publish} onClose={() => setPublish(null)} />}
       {retire && <RetireRuleDialog r={retire} onClose={() => setRetire(null)} />}
@@ -134,7 +134,7 @@ function PublishRuleDialog({ base, onClose }: { base: ComplianceRule | null; onC
   })();
   const act = useAction(() => publishComplianceRule({ code: f.code, label: f.label, kind: f.kind, appliesTo: applies, params, source: f.source,
     synthetic: f.synthetic, explanation: f.explanation, reason: f.reason }), {
-    success: (r) => `${r.code} v${r.version} is active.`, invalidate: [['compliance-rules'], ['matrix']], onSuccess: onClose,
+    success: (r) => `${r.label} version ${r.version} is active.`, invalidate: [['compliance-rules'], ['matrix']], onSuccess: onClose,
   });
   const fields = [...new Set((types.data ?? []).filter((t) => applies.includes(t.code)).flatMap((t) => t.form_schema.map((x) => x.key)))];
   const simple = ['min', 'max', 'ratio_max', 'consistency_gt'].includes(f.kind);
@@ -149,11 +149,11 @@ function PublishRuleDialog({ base, onClose }: { base: ComplianceRule | null; onC
     && f.source.trim().length >= 5 && f.reason.trim().length >= 10;
   const fieldSelect = (label: string, key: 'field' | 'other' | 'baseField' | 'declaredField') => (
     <SelectField label={label} required value={f[key]} onChange={set(key)}>
-      <option value="">Select a form field</option>{fields.map((x) => <option key={x} value={x}>{x}</option>)}
+      <option value="">Select a form field</option>{fields.map((x) => <option key={x} value={x}>{codeLabel(x)}</option>)}
     </SelectField>
   );
   return (
-    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title={base ? `New version of ${base.code}` : 'New Deficiency Matrix rule'}
+    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title={base ? `New version of ${base.label}` : 'New Deficiency Matrix rule'}
       description="The server checks that the fields exist on every selected form and that a source is given."
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={!valid} onClick={() => act.mutate(undefined)}>Publish rule</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -213,9 +213,9 @@ function PublishRuleDialog({ base, onClose }: { base: ComplianceRule | null; onC
 
 function RetireRuleDialog({ r, onClose }: { r: ComplianceRule; onClose: () => void }) {
   const [reason, setReason] = useState('');
-  const act = useAction(() => retireComplianceRule(r.code, reason), { success: `${r.code} retired.`, invalidate: [['compliance-rules'], ['matrix']], onSuccess: onClose });
+  const act = useAction(() => retireComplianceRule(r.code, reason), { success: `${r.label} retired.`, invalidate: [['compliance-rules'], ['matrix']], onSuccess: onClose });
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title={`Retire ${r.code}`} description="The rule stops appearing in the matrix. Its versions stay on record."
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={`Retire ${r.label}`} description="The rule stops appearing in the matrix. Its versions stay on record."
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="danger" loading={act.isPending} disabled={reason.trim().length < 10} onClick={() => act.mutate(undefined)}>Retire rule</Button></>}>
       <TextAreaField label="Reason" required rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
     </Dialog>

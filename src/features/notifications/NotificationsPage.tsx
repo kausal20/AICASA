@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { PageHeader } from '@/components/ui/Page';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/States';
-import { fmtDateTime, humanize } from '@/lib/format';
+import { fmtDateTime, humanize, notificationDue, plainText } from '@/lib/format';
 import { cn } from '@/lib/cn';
 
 export function NotificationsPage() {
@@ -32,7 +32,8 @@ export function NotificationsPage() {
                     <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', n.read_at ? 'bg-line' : 'bg-accent')} aria-hidden />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2"><span className="text-[13.5px] font-medium text-ink">{n.title}</span><Badge tone={n.kind === 'escalation' ? 'danger' : n.kind === 'reminder' ? 'warning' : 'neutral'}>{humanize(n.kind)}</Badge>{!n.read_at && <span className="sr-only">Unread</span>}</span>
-                      <span className="mt-0.5 block text-[13px] text-ink-soft">{n.body}</span>
+                      <span className="mt-0.5 block text-[13px] text-ink-soft">{plainText(n.body)}</span>
+                      {notificationDue(n) && <span className="mt-0.5 block text-[13px] font-medium text-ink">{notificationDue(n)}</span>}
                       <span className="mt-1 block text-xs text-ink-faint">{fmtDateTime(n.created_at)}</span>
                     </span>
                   </button>

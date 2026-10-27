@@ -4,6 +4,7 @@ import {
   CalendarCheck, CalendarClock, Eye, Ban,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { dueState, fmtDate, humanize, relativeDue } from '@/lib/format';
 
 export type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'primary' | 'accent';
 
@@ -34,7 +35,7 @@ const STATUS: Record<string, { label: string; tone: Tone; icon: ReactNode }> = {
   submitted: { label: 'Awaiting RO Scrutiny', tone: 'info', icon: <Send className={I} aria-hidden /> },
   under_scrutiny: { label: 'Under RO Scrutiny', tone: 'accent', icon: <Eye className={I} aria-hidden /> },
   returned_for_correction: { label: 'Deficiencies Flagged', tone: 'warning', icon: <RotateCcw className={I} aria-hidden /> },
-  correction_submitted: { label: 'Clarification submitted', tone: 'info', icon: <Send className={I} aria-hidden /> },
+  correction_submitted: { label: 'Correction submitted — awaiting re-review', tone: 'info', icon: <Send className={I} aria-hidden /> },
   awaiting_verification: { label: 'Awaiting verification', tone: 'info', icon: <Clock className={I} aria-hidden /> },
   ready_for_next_stage: { label: 'Ready for next stage', tone: 'primary', icon: <CircleDot className={I} aria-hidden /> },
   evc_required: { label: 'EVC required', tone: 'warning', icon: <CalendarClock className={I} aria-hidden /> },
@@ -80,24 +81,24 @@ const STATUS: Record<string, { label: string; tone: Tone; icon: ReactNode }> = {
 };
 
 export function StatusBadge({ status, label, className }: { status: string; label?: string; className?: string }) {
-  const s = STATUS[status] ?? { label: status.replace(/_/g, ' '), tone: 'neutral' as Tone, icon: null };
+  const s = STATUS[status] ?? { label: humanize(status), tone: 'neutral' as Tone, icon: null };
   return <Badge tone={s.tone} icon={s.icon} className={className}>{label ?? s.label}</Badge>;
 }
 
 export function statusLabel(status: string): string {
-  return STATUS[status]?.label ?? status.replace(/_/g, ' ');
+  return STATUS[status]?.label ?? humanize(status);
 }
 
+/** Due date plus its state on the app's date-only policy (due today is never overdue). Every deadline badge uses this. */
 export function DueBadge({ due, done }: { due: string | null | undefined; done?: boolean }) {
   if (!due) return <span className="text-ink-faint">—</span>;
-  const days = Math.round((new Date(due).getTime() - Date.now()) / 86400000);
-  if (done) return <span className="tabular text-ink-soft">{new Date(due).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>;
-  const tone: Tone = days < 0 ? 'danger' : days <= 3 ? 'warning' : 'neutral';
-  const text = days < 0 ? `${-days}d overdue` : days === 0 ? 'Due today' : `${days}d left`;
+  if (done) return <span className="tabular text-ink-soft">{fmtDate(due)}</span>;
+  const state = dueState(due);
+  const tone: Tone = state === 'overdue' ? 'danger' : state === 'today' || state === 'soon' ? 'warning' : 'neutral';
   return (
     <span className="inline-flex flex-col leading-tight">
-      <span className="tabular text-[13px] text-ink">{new Date(due).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>
-      <Badge tone={tone} className="mt-0.5 w-fit px-1.5 py-0 text-[11px]" icon={days < 0 ? <AlertTriangle className="h-3 w-3" aria-hidden /> : <Clock className="h-3 w-3" aria-hidden />}>{text}</Badge>
+      <span className="tabular text-[13px] text-ink">{fmtDate(due)}</span>
+      <Badge tone={tone} className="mt-0.5 w-fit px-1.5 py-0 text-[11px]" icon={state === 'overdue' ? <AlertTriangle className="h-3 w-3" aria-hidden /> : <Clock className="h-3 w-3" aria-hidden />}>{relativeDue(due)}</Badge>
     </span>
   );
 }

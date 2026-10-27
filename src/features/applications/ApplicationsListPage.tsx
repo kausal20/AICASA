@@ -1,9 +1,9 @@
 import { SavedViews } from './SavedViews';
 import { Fragment, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'motion/react';
-import { Copy, ExternalLink, FilePlus2, FileText, History, Search, ShieldAlert, SlidersHorizontal } from 'lucide-react';
+import { Copy, ExternalLink, FilePlus2, FileText, History, Info, Search, ShieldAlert, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { getApplicationTypes, getDirectory, listApplications, PAGE_SIZE, type ApplicationFilters, type SortField } from '@/services/applications';
@@ -15,12 +15,9 @@ import { Pagination } from '@/components/ui/Page';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/States';
 import { FilterChip, PageTitle, Panel, RowMenu, Segmented, SortHeader, type SortDir } from '@/components/ui/Workspace';
 import { cn } from '@/lib/cn';
-import { humanize } from '@/lib/format';
+import { plural } from '@/lib/format';
 import type { ApplicationRow } from '@/types/domain';
 
-const STATUSES = ['draft', 'under_scrutiny', 'returned_for_correction', 'correction_submitted', 'evc_required', 'evc_scheduled',
-  'evc_completed', 'committee_review', 'awaiting_decision', 'completed'];
-const STAGES = ['intake', 'scrutiny', 'evc', 'committee', 'decision', 'terminal'];
 type Quick = 'all' | 'open' | 'action' | 'overdue' | 'closed';
 
 export function ApplicationsListPage({ mode = 'all' }: { mode?: 'all' | 'mine' }) {
@@ -48,7 +45,7 @@ export function ApplicationsListPage({ mode = 'all' }: { mode?: 'all' | 'mine' }
   };
   useEffect(() => { setSearch(params.get('q') ?? ''); }, [params]);
 
-  const q = useQuery({ queryKey: ['applications', filters, page], queryFn: () => listApplications(filters, page), placeholderData: keepPreviousData });
+  const q = useQuery({ queryKey: ['applications', filters, page], queryFn: () => listApplications(filters, page) });
   const types = useQuery({ queryKey: ['types'], queryFn: getApplicationTypes, staleTime: 600_000 });
   const regions = useQuery({ queryKey: ['regions'], queryFn: listRegions, staleTime: 600_000, enabled: workspace !== 'institution' });
   const dir = useQuery({ queryKey: ['directory'], queryFn: getDirectory, staleTime: 300_000, enabled: !!params.get('assigned') });
@@ -83,7 +80,7 @@ export function ApplicationsListPage({ mode = 'all' }: { mode?: 'all' | 'mine' }
         description={mode === 'mine' ? 'Applications currently assigned to you, earliest stage target first.'
           : workspace === 'institution' ? `Every application of ${institution?.name ?? 'your institution'}, with where it is and what happens next.`
             : 'Every application your role and region permit you to see. Select a reference to open its workspace.'}
-        meta={<span className="text-[13px] text-ink-soft"><span className="font-semibold text-ink tabular">{q.isLoading ? '…' : total}</span> matching application{total === 1 ? '' : 's'}</span>}
+        meta={<span className="text-[13px] text-ink-soft">{q.isLoading ? 'Loading…' : `${plural(total, 'matching application')}`}</span>}
         actions={workspace === 'institution' && <ButtonLink to="/app/applications/new" icon={<FilePlus2 className="h-4 w-4" />}>New application</ButtonLink>} />
 
       <Panel bodyClassName="">
@@ -92,7 +89,7 @@ export function ApplicationsListPage({ mode = 'all' }: { mode?: 'all' | 'mine' }
             <Segmented label="Quick filter" value={quick} onChange={setQuick} options={[
               { value: 'all', label: 'All' },
               { value: 'open', label: 'In process' },
-              { value: 'action', label: workspace === 'institution' ? 'Needs your action' : 'With institution' },
+              { value: 'action', label: workspace === 'institution' ? 'Queries to answer' : 'With institution' },
               { value: 'overdue', label: 'Past target' },
               { value: 'closed', label: 'Completed' },
             ]} />
@@ -103,14 +100,6 @@ export function ApplicationsListPage({ mode = 'all' }: { mode?: 'all' | 'mine' }
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-ink-faint" aria-hidden />
-            <Select aria-label="Status" value={params.get('status') ?? ''} onChange={(e) => update({ status: e.target.value || null, group: null })} className="h-9 w-auto min-w-[160px] text-[13px]">
-              <option value="">Any status</option>
-              {STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
-            </Select>
-            <Select aria-label="Stage" value={params.get('stage') ?? ''} onChange={(e) => update({ stage: e.target.value || null })} className="h-9 w-auto min-w-[130px] text-[13px]">
-              <option value="">Any stage</option>
-              {STAGES.map((s) => <option key={s} value={s}>{s === 'terminal' ? 'Closed' : s === 'evc' ? 'EVC' : humanize(s)}</option>)}
-            </Select>
             <Select aria-label="Application type" value={params.get('type') ?? ''} onChange={(e) => update({ type: e.target.value || null })} className="h-9 w-auto min-w-[160px] text-[13px]">
               <option value="">Any type</option>
               {(types.data ?? []).map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
@@ -157,10 +146,10 @@ function rowTone(r: ApplicationRow) {
   return 'before:bg-transparent';
 }
 
+/** The same deadline the overdue flag and the "Past target" filter use (v_applications.due_at). */
 function DueCell({ r }: { r: ApplicationRow }) {
-  if (r.status === 'returned_for_correction') return <div><p className="mb-0.5 text-[11px] text-ink-faint">Correction due</p><DueBadge due={r.correction_due_at} /></div>;
   if (['completed', 'closed', 'draft'].includes(r.status)) return <span className="text-[13px] text-ink-faint">{r.status === 'draft' ? 'Not submitted' : 'Closed'}</span>;
-  return <div><p className="mb-0.5 text-[11px] text-ink-faint">Stage target</p><DueBadge due={r.stage_due_at} /></div>;
+  return <div><p className="mb-0.5 text-[11px] text-ink-faint">{r.status === 'returned_for_correction' ? 'Correction due' : 'Stage target'}</p><DueBadge due={r.due_at} /></div>;
 }
 
 /** Shared application table. Sorting is optional so dashboards can reuse it. */
@@ -204,15 +193,15 @@ export function ApplicationsTable({ rows, showInstitution, sort, dir, onSort }: 
               <td className="px-4 py-3 align-top">
                 <p className="mb-1 text-xs text-ink-soft">{r.stage_name}</p>
                 <StatusBadge status={r.status} />
-                {r.open_deficiencies > 0 && <p className="mt-1 flex items-center gap-1 text-xs font-medium text-warning"><ShieldAlert className="h-3 w-3" aria-hidden />{r.open_deficiencies} open deficienc{r.open_deficiencies === 1 ? 'y' : 'ies'}</p>}
+                {r.open_deficiencies > 0 && <p className="mt-1 flex items-center gap-1 text-xs font-medium text-warning"><ShieldAlert className="h-3 w-3" aria-hidden />{plural(r.open_deficiencies, 'open query', 'open queries')}</p>}
               </td>
               {extra.includes('next') && <td className="max-w-[260px] px-4 py-3 align-top">
                 <p className="text-[13px] text-ink">{r.next_action ?? '—'}</p>
                 <p className="mt-0.5 text-xs text-ink-faint">{r.status === 'returned_for_correction' || r.status === 'draft' ? 'With the institution' : r.assigned_officer_name ? `With ${r.assigned_officer_name}` : ['completed', 'closed'].includes(r.status) ? '' : 'Unassigned'}</p>
               </td>}
               <td className="px-4 py-3 align-top"><DueCell r={r} /></td>
-              {extra.includes('age') && <td className="px-4 py-3 text-right align-top text-[13px] tabular text-ink-soft">{r.submitted_at ? `${r.age_days}d` : '—'}<p className="text-[11px] text-ink-faint">{r.submitted_at ? `${r.stage_age_days}d in stage` : ''}</p></td>}
-              <td className="px-2 py-3 align-top"><div className="flex items-center"><Button variant="ghost" size="sm" aria-expanded={expanded.has(r.id)} aria-controls={`details-${r.id}`} aria-label={`Details for ${r.reference}`} onClick={() => toggleRow(r.id)}>Details</Button><CaseMenu r={r} /></div></td>
+              {extra.includes('age') && <td className="px-4 py-3 text-right align-top text-[13px] tabular text-ink-soft">{r.submitted_at ? plural(r.age_days, 'day') : '—'}<p className="text-[11px] text-ink-faint">{r.submitted_at ? `${plural(r.stage_age_days, 'day')} in stage` : ''}</p></td>}
+              <td className="px-2 py-3 align-top"><CaseMenu r={r} expanded={expanded.has(r.id)} onToggleDetails={() => toggleRow(r.id)} /></td>
             </tr>{expanded.has(r.id) && <tr id={`details-${r.id}`} className="border-b border-line bg-page/70"><td colSpan={4 + Number(showInstitution) + extra.length} className="px-5 py-4"><RecordDetails r={r} /></td></tr>}</Fragment>
           ))}
         </tbody>
@@ -221,13 +210,14 @@ export function ApplicationsTable({ rows, showInstitution, sort, dir, onSort }: 
   );
 }
 
-export function CaseMenu({ r }: { r: ApplicationRow }) {
+export function CaseMenu({ r, expanded, onToggleDetails }: { r: ApplicationRow; expanded?: boolean; onToggleDetails?: () => void }) {
   const nav = useNavigate();
   return (
-    <RowMenu label={`Actions for ${r.reference}`} actions={[
+    <RowMenu label={`More actions for ${r.reference}`} actions={[
+      ...(onToggleDetails ? [{ label: expanded ? 'Hide details' : 'Show details', icon: Info, onSelect: onToggleDetails }] : []),
       { label: 'Open application', icon: ExternalLink, onSelect: () => nav(`/app/applications/${r.id}`) },
       { label: 'Documents and versions', icon: FileText, onSelect: () => nav(`/app/applications/${r.id}?tab=documents`) },
-      { label: 'Deficiencies', icon: ShieldAlert, onSelect: () => nav(`/app/applications/${r.id}?tab=deficiencies`), hint: r.open_deficiencies ? `${r.open_deficiencies} open` : undefined },
+      { label: 'Query & Clarification', icon: ShieldAlert, onSelect: () => nav(`/app/applications/${r.id}?tab=deficiencies`), hint: r.open_deficiencies ? `${r.open_deficiencies} open` : undefined },
       { label: 'Activity timeline', icon: History, onSelect: () => nav(`/app/applications/${r.id}?tab=timeline`) },
       { label: 'Copy reference', icon: Copy, onSelect: () => { navigator.clipboard?.writeText(r.reference).then(() => toast.success(`Copied ${r.reference}`), () => toast.error('Copy was blocked by the browser.')); } },
     ]} />
@@ -257,7 +247,7 @@ function RecordDetails({ r }: { r: ApplicationRow }) {
     ['Application', r.title], ['Institution', r.institution_name], ['Next action', r.next_action ?? 'No pending action'],
     ['Responsible', ['draft', 'returned_for_correction'].includes(r.status) ? 'Institution' : r.assigned_officer_name ?? 'Not assigned'],
     ['Academic year', r.academic_year], ['Application type', r.application_type_name], ['Stage', r.stage_name],
-    ['Time in process', r.submitted_at ? `${r.age_days} days; ${r.stage_age_days} days in this stage` : 'Not submitted'],
-    ['Open deficiencies', String(r.open_deficiencies)],
+    ['Time in process', r.submitted_at ? `${plural(r.age_days, 'day')}; ${plural(r.stage_age_days, 'day')} in this stage` : 'Not submitted'],
+    ['Open queries', String(r.open_deficiencies)],
   ].map(([label, value]) => <div key={label}><dt className="mb-1 text-xs text-ink-soft">{label}</dt><dd className="leading-relaxed text-ink">{value}</dd></div>)}</dl>;
 }

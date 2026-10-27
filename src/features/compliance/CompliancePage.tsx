@@ -38,10 +38,10 @@ export function CompliancePage() {
         description="Undertakings, conditions, periodic returns and document renewals, tracked after approval as well as during processing. Submitting evidence never verifies it; an authorised officer does."
         actions={workspace !== 'institution' && can('compliance') && <Button icon={<ClipboardPlus className="h-4 w-4" />} onClick={() => setCreate(true)}>New obligation</Button>} />
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Overdue" value={n('overdue')} tone={n('overdue') ? 'danger' : 'neutral'} />
-        <Stat label="Due within 30 days" value={n('due_soon')} tone={n('due_soon') ? 'warning' : 'neutral'} />
-        <Stat label="Awaiting verification" value={n('submitted') + n('under_verification')} />
-        <Stat label="Verified" value={n('verified')} tone="primary" />
+        <Stat label="Overdue" value={q.isLoading ? '…' : n('overdue')} tone={n('overdue') ? 'danger' : 'neutral'} />
+        <Stat label="Due within 30 days" value={q.isLoading ? '…' : n('due_soon')} tone={n('due_soon') ? 'warning' : 'neutral'} />
+        <Stat label="Awaiting verification" value={q.isLoading ? '…' : n('submitted') + n('under_verification')} />
+        <Stat label="Verified" value={q.isLoading ? '…' : n('verified')} tone="primary" />
       </div>
       <Card>
         <div className="flex flex-wrap gap-1.5 border-b border-line p-3" role="toolbar" aria-label="Filter by status">

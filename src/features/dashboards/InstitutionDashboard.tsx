@@ -12,7 +12,7 @@ import { DueBadge, StatusBadge } from '@/components/ui/Badge';
 import { EmptyState, ErrorState, LoadingRows, Notice } from '@/components/ui/States';
 import { Kpi, PageTitle, Panel } from '@/components/ui/Workspace';
 import { ApplicationsTable } from '@/features/applications/ApplicationsListPage';
-import { fmtDate, fmtDateTime } from '@/lib/format';
+import { fmtDate, fmtDateTime, notificationDue, plainText, plural } from '@/lib/format';
 import type { ApplicationStatus, CheckRun } from '@/types/domain';
 
 const IN_PROCESS: ApplicationStatus[] = ['submitted', 'under_scrutiny', 'correction_submitted', 'evc_required', 'evc_scheduled', 'evc_completed', 'committee_review', 'awaiting_decision'];
@@ -21,7 +21,7 @@ export function InstitutionDashboard() {
   const { institution, context } = useAuth();
   const id = institution?.id;
   const statuses = useQuery({ queryKey: ['applications', 'statuses', id], enabled: !!id,
-    queryFn: async () => unwrap(await supabase.from('v_applications').select('status').eq('institution_id', id!)) as { status: ApplicationStatus }[] });
+    queryFn: async () => unwrap(await supabase.from('v_applications').select('status, queries_awaiting_institution').eq('institution_id', id!)) as { status: ApplicationStatus; queries_awaiting_institution: number }[] });
   const recent = useQuery({ queryKey: ['applications', 'recent', id], queryFn: () => listApplications({ institutionId: id }, 0), enabled: !!id });
   const obl = useQuery({ queryKey: ['obligations', id], queryFn: () => listObligations({ institutionId: id }), enabled: !!id });
   const val = useQuery({ queryKey: ['validities', id], queryFn: () => listValidities({ institutionId: id }), enabled: !!id });
@@ -37,6 +37,8 @@ export function InstitutionDashboard() {
   const nextObl = obligations.filter((o) => ['overdue', 'due_soon', 'correction_required', 'awaiting_submission'].includes(o.effective_status)).slice(0, 6);
   const renewals = (val.data ?? []).filter((v) => v.validity_state === 'expired' || v.validity_state === 'expiring_soon');
   const loading = statuses.isLoading;
+  // same source as the Query & Clarification badge: queries sent to the institution and waiting for its answer
+  const awaiting = s.reduce((n, x) => n + x.queries_awaiting_institution, 0);
 
   return (
     <div>
@@ -50,7 +52,7 @@ export function InstitutionDashboard() {
           <Kpi label="Applications" value={s.length} loading={loading} icon={FileStack} to="/app/applications" />
           <Kpi label="Drafts" value={c((x) => x.status === 'draft')} loading={loading} icon={FilePen} to="/app/applications?status=draft" />
           <Kpi label="Under processing" value={c((x) => IN_PROCESS.includes(x.status))} loading={loading} icon={Workflow} tone="accent" to="/app/applications?group=open" />
-          <Kpi label="Awaiting your action" value={c((x) => x.status === 'returned_for_correction')} loading={loading} icon={ShieldAlert} tone={c((x) => x.status === 'returned_for_correction') ? 'warning' : 'neutral'} to="/app/applications?status=returned_for_correction" />
+          <Kpi label="Awaiting your action" value={awaiting} loading={loading} icon={ShieldAlert} tone={awaiting ? 'warning' : 'neutral'} to="/app/deficiencies" hint={awaiting ? `${plural(awaiting, 'query', 'queries')} to answer` : undefined} />
           <Kpi label="Completed" value={c((x) => x.status === 'completed' || x.status === 'closed')} loading={loading} icon={CheckCircle2} tone="primary" to="/app/applications?group=closed" />
           <Kpi label="Overdue obligations" value={overdueObl.length} loading={obl.isLoading} icon={ClipboardCheck} tone={overdueObl.length ? 'danger' : 'neutral'} to="/app/compliance?status=overdue" />
         </div>
@@ -94,9 +96,9 @@ export function InstitutionDashboard() {
           )}
         </Panel>
         <Panel className="xl:col-span-6" title="Latest notifications" action={<Link to="/app/notifications" className="text-[13px] font-medium text-accent hover:underline">All</Link>}>
-          {!notes.data?.length ? <EmptyState icon={<Bell className="h-5 w-5" />} title="No notifications yet" /> : (
+          {notes.isLoading ? <LoadingRows rows={3} /> : notes.error ? <ErrorState error={notes.error} onRetry={() => notes.refetch()} /> : !notes.data?.length ? <EmptyState icon={<Bell className="h-5 w-5" />} title="No notifications yet" /> : (
             <ul className="divide-y divide-line">{notes.data.map((n) => (
-              <li key={n.id}><Link to={n.link ?? '/app/notifications'} className="block px-5 py-3 hover:bg-surface-muted/60"><p className="text-[13px] font-medium">{n.title}</p><p className="text-xs text-ink-soft">{n.body}</p><p className="mt-0.5 text-[11px] text-ink-faint">{fmtDateTime(n.created_at)}</p></Link></li>
+              <li key={n.id}><Link to={n.link ?? '/app/notifications'} className="block px-5 py-3 hover:bg-surface-muted/60"><p className="text-[13px] font-medium">{n.title}</p><p className="text-xs text-ink-soft">{plainText(n.body)}</p>{notificationDue(n) && <p className="text-xs font-medium text-ink">{notificationDue(n)}</p>}<p className="mt-0.5 text-[11px] text-ink-faint">{fmtDateTime(n.created_at)}</p></Link></li>
             ))}</ul>
           )}
         </Panel>

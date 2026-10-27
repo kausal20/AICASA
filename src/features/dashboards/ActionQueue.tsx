@@ -8,7 +8,16 @@ import { type WorkBucket } from '@/lib/workQueue';
 import { Panel } from '@/components/ui/Workspace';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/States';
 import { DueBadge } from '@/components/ui/Badge';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, plural } from '@/lib/format';
+import type { WorkCounts } from '@/lib/workQueue';
+
+function countsText(c: WorkCounts): string {
+  const parts = [plural(c.applications, 'application')];
+  if (c.tasks) parts.push(plural(c.tasks, 'task'));
+  if (c.obligations) parts.push(plural(c.obligations, 'obligation'));
+  if (c.escalations) parts.push(plural(c.escalations, 'escalation'));
+  return parts.join(' · ');
+}
 import { Button } from '@/components/ui/Button';
 
 const GROUPS = [
@@ -32,7 +41,7 @@ export function ActionQueue({ region }: { region?: string }) {
     <p className="px-5 pt-4 text-sm text-ink-soft">{group.description}</p>
     {q.isLoading ? <LoadingRows rows={3} /> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !q.data?.items.length ? <EmptyState title={bucket === 'now' ? 'Nothing needs immediate attention' : 'No work in this category'} body={bucket === 'now' ? 'Check upcoming deadlines or work waiting for someone else.' : 'Try another category to see the rest of your work.'} /> : <>
       <ul className="mt-3 divide-y divide-line" aria-busy={q.isFetching}>{q.data.items.slice(0, visible).map((r) => <li key={r.id}><Link to={r.to} className="work-item flex flex-wrap items-center justify-between gap-3 px-5 transition-colors hover:bg-primary-soft/40"><div className="min-w-0 flex-1 basis-60"><p className="mb-1 text-xs font-medium text-accent">{r.kind}</p><p className="text-sm font-semibold leading-relaxed">{r.title}</p><p className="mt-1 text-sm text-ink-soft">{r.detail}</p></div><div className="flex items-center gap-4">{r.completed ? <span className="text-sm text-success">Completed {fmtDate(r.date)}</span> : bucket === 'waiting' ? <span className="text-sm text-ink-soft">Awaiting response</span> : r.date ? <DueBadge due={r.date} /> : <span className="text-sm text-accent">Ready to work</span>}<ArrowRight className="h-4 w-4 shrink-0 text-accent" aria-hidden /></div></Link></li>)}</ul>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3"><p className="text-xs text-ink-soft">Showing {Math.min(visible, q.data.items.length)} of {q.data.total} matching work items. Applications and their tasks are counted separately.</p>{visible < q.data.items.length && <Button variant="ghost" size="sm" onClick={() => setVisible(visible + 5)}>Show more</Button>}{visible >= q.data.items.length && q.data.total > q.data.items.length && <Link className="text-sm font-medium text-accent hover:underline" to={workspace === 'officer' ? '/app/tasks' : '/app/applications'}>Open full work lists</Link>}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3"><p className="text-xs text-ink-soft">Showing {plural(Math.min(visible, q.data.items.length), 'case or item', 'cases and items')}, one row per case. Matching: {countsText(q.data.counts)}.</p>{visible < q.data.items.length && <Button variant="ghost" size="sm" onClick={() => setVisible(visible + 5)}>Show more</Button>}{visible >= q.data.items.length && q.data.counts.applications + q.data.counts.tasks > q.data.items.length && <Link className="text-sm font-medium text-accent hover:underline" to={workspace === 'officer' ? '/app/tasks' : '/app/applications'}>Open full work lists</Link>}</div>
     </>}
   </Panel>;
 }

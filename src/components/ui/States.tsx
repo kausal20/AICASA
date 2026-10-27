@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { AlertCircle, Inbox, Lock, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from './Button';
 import { errorMessage } from '@/lib/errors';
 import { cn } from '@/lib/cn';
@@ -50,6 +51,7 @@ export function PermissionState({ body }: { body?: string }) {
       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-surface-muted text-ink-soft"><Lock className="h-5 w-5" aria-hidden /></div>
       <p className="text-sm font-medium text-ink">Access restricted</p>
       <p className="mt-1 max-w-md text-[13px] text-ink-soft">{body ?? 'Your current role does not include this area. If you need access, ask an administrator in your region.'}</p>
+      <Link to="/app" className="mt-4 inline-flex h-9 items-center rounded-lg bg-primary px-4 text-[13px] font-medium text-white hover:bg-primary/90">Go to my dashboard</Link>
     </div>
   );
 }

@@ -54,6 +54,10 @@ export async function assignEvcExpert(evcId: string, expertId: string, version: 
   return unwrap(await supabase.rpc('assign_evc_expert', { p_evc_id: evcId, p_expert_id: expertId, p_expected_version: version }));
 }
 
+export async function setEvcPanelChair(evcId: string, expertId: string) {
+  return unwrap(await supabase.rpc('set_evc_panel_chair', { p_evc_id: evcId, p_expert_id: expertId }));
+}
+
 export async function removeEvcExpert(evcId: string, expertId: string, reason: string) {
   return unwrap(await supabase.rpc('remove_evc_expert', { p_evc_id: evcId, p_expert_id: expertId, p_reason: reason }));
 }

@@ -9,7 +9,7 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
-  addObservation, getApplication, getApplicationRow, getAvailableTransitions, getDecisions, getDirectory, getEvents,
+  addObservation, getApplication, getApplicationRow, getAvailableTransitions, getDecisions, getDirectory, getEligibleCaseOfficers, getEvents,
   getObservations, getRequirements, getRoute, getStageHistory, performTransition, reassignApplication,
 } from '@/services/applications';
 import { listDocuments } from '@/services/documents';
@@ -28,21 +28,28 @@ import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { Disclosure, Panel } from '@/components/ui/Workspace';
 import { DocumentsSection } from '@/features/documents/DocumentsSection';
 import { DeficiencyCard } from '@/features/deficiencies/DeficiencyCard';
-import { DeficiencyMatrix } from '@/features/compliance/DeficiencyMatrix';
+import { DeficiencyMatrix, ruleQueryDraft, type RuleQueryDraft } from '@/features/compliance/DeficiencyMatrix';
+import { useCanReview } from '@/features/deficiencies/DeficienciesPage';
+import { ResponseWindowsNote } from '@/features/deficiencies/QueryWindow';
+import { officerCaseState, type OfficerCaseState } from '@/lib/caseState';
+import { stageResponsibility } from '@/lib/queries';
+import { responsibilityLabel } from '@/lib/responsibilities';
 import { ReviewTasksPanel } from './ReviewTasksPanel';
 import { useAction } from '@/hooks/useAction';
 import { cn } from '@/lib/cn';
 import { REGIONAL_OFFICER_LABEL, auditActionLabel, auditResponsibilities } from '@/lib/responsibilities';
-import { decisionLabel, fmtDate, fmtDateTime, humanize, endOfDayIso } from '@/lib/format';
-import type { Application, ApplicationRow, AvailableTransition, AppEvent, Deficiency, EvcRow } from '@/types/domain';
+import { decisionLabel, fmtDate, fmtDateTime, humanize, endOfDayIso, plural } from '@/lib/format';
+import type { Application, ApplicationRow, AvailableTransition, AppEvent, Capability, Deficiency, EvcRow, StageHistory, WorkflowStage } from '@/types/domain';
 
-const TABS = ['overview', 'timeline', 'documents', 'deficiencies', 'evc', 'details', 'audit'] as const;
+const TABS = ['overview', 'matrix', 'reviews', 'timeline', 'documents', 'deficiencies', 'evc', 'details', 'audit'] as const;
 type Tab = (typeof TABS)[number];
 
 export function ApplicationDetailPage() {
   const { id = '' } = useParams();
   const [params, setParams] = useSearchParams();
-  const { workspace, can, institution } = useAuth();
+  const { workspace, can, canIn, institution } = useAuth();
+  const canReview = useCanReview();
+  const [draft, setDraft] = useState<RuleQueryDraft | null>(null);
   const staff = workspace === 'officer' || workspace === 'admin';
   const tab: Tab = (TABS as readonly string[]).includes(params.get('tab') ?? '') ? (params.get('tab') as Tab) : 'overview';
   const setTab = (t: string) => { const p = new URLSearchParams(params); if (t === 'overview') p.delete('tab'); else p.set('tab', t); setParams(p, { replace: true }); };
@@ -70,10 +77,13 @@ export function ApplicationDetailPage() {
   const name = (uid: string | null) => (uid ? dir.data?.find((p) => p.id === uid)?.full_name ?? 'Authorised user' : 'System');
   const isRep = workspace === 'institution' && institution?.id === a.institution_id && institution?.member_role === 'representative';
   const openDefs = (defs.data ?? []).filter((d) => !['resolved', 'withdrawn'].includes(d.status));
-  const awaitingReview = openDefs.filter((d) => d.status === 'correction_submitted');
   const latestEvc = (evc.data ?? []).filter((e) => e.status !== 'cancelled').at(-1);
   // institutions see the matrix while they can still act on it (draft or returned); staff always
   const showMatrix = staff || ['draft', 'returned_for_correction'].includes(a.status);
+  const officer = workspace === 'officer'
+    ? officerCaseState(a, transitions.data, defs.data ?? [], canIn(stageResponsibility(a.current_stage) as Capability, a.region_code)) : null;
+  const appRef = { reference: a.reference, title: a.title, institution_id: a.institution_id, status: a.status, current_stage: a.current_stage,
+    region_code: a.region_code, application_type_code: a.application_type_code, checklist_version: app.checklist_version };
 
   return (
     <div>
@@ -109,22 +119,26 @@ export function ApplicationDetailPage() {
         <div className="order-2 min-w-0 xl:order-1">
           <Tabs value={tab} onValueChange={setTab} tabs={[
             { value: 'overview', label: 'Overview' },
+            ...(showMatrix ? [{ value: 'matrix', label: 'Deficiency Matrix' }] : []),
+            ...(staff ? [{ value: 'reviews', label: 'Reviews' }] : []),
             { value: 'timeline', label: <>Timeline{events.data ? <span className="ml-1.5 text-ink-faint tabular">{events.data.length}</span> : null}</> },
             { value: 'documents', label: <>Documents{docs.data ? <span className="ml-1.5 text-ink-faint tabular">{docs.data.length}</span> : null}</> },
-            { value: 'deficiencies', label: <>Query &amp; Clarification{openDefs.length ? <span className="ml-1.5 rounded-full bg-warning-soft px-1.5 text-[11px] font-semibold text-[#7a5100]">{openDefs.length} open</span> : null}</> },
+            { value: 'deficiencies', label: <>Query &amp; Clarification{a.open_deficiencies ? <span className="ml-1.5 rounded-full bg-warning-soft px-1.5 text-[11px] font-semibold text-[#7a5100]">{a.open_deficiencies} open</span> : null}</> },
             { value: 'evc', label: 'EVC' },
             { value: 'details', label: 'Details' },
             ...(staff ? [{ value: 'audit', label: 'Audit' }] : []),
           ]}>
             <TabPanel value="overview">
-              {staff && <ReviewTasksPanel applicationId={a.id} />}
-              {showMatrix && <DeficiencyMatrix applicationId={a.id} audience={staff ? 'staff' : 'institution'} />}
-              <OverviewTab a={a} events={events.data} openDefs={openDefs} docs={docs.data?.length ?? 0} missingDocs={(reqs.data ?? []).filter((r) => r.is_required && !(docs.data ?? []).some((d) => d.doc_type === r.doc_type && d.current_version > 0)).map((r) => r.name)}
+              <OverviewTab a={a} events={events.data} openDefs={openDefs} openCount={a.open_deficiencies} docs={docs.data?.length ?? 0} missingDocs={(reqs.data ?? []).filter((r) => r.is_required && !(docs.data ?? []).some((d) => d.doc_type === r.doc_type && d.current_version > 0)).map((r) => r.name)}
                 latestEvc={latestEvc} decisions={decisions.data} name={name} onTab={setTab} />
             </TabPanel>
+            {showMatrix && <TabPanel value="matrix">
+              <DeficiencyMatrix applicationId={a.id} audience={staff ? 'staff' : 'institution'}
+                onRaiseQuery={officer?.canRaiseQuery ? (r) => setDraft(ruleQueryDraft(r, a.reference)) : undefined} />
+            </TabPanel>}
+            {staff && <TabPanel value="reviews"><ReviewsTab a={a} history={history.data} stages={route.data?.stages} officer={officer} name={name} /></TabPanel>}
             <TabPanel value="timeline"><Panel><TimelineList events={events.data} loading={events.isLoading} name={name} /></Panel></TabPanel>
             <TabPanel value="documents">
-              {showMatrix && <DeficiencyMatrix applicationId={a.id} audience={staff ? 'staff' : 'institution'} />}
               <Panel title="Documents and versions" description="Every upload is a new version; earlier versions stay on file and remain openable.">
                 <div className="px-5">
                   {docs.isLoading ? <LoadingRows /> : (
@@ -140,8 +154,11 @@ export function ApplicationDetailPage() {
               <div className="space-y-4">
                 {defs.isLoading ? <Panel><LoadingRows /></Panel> : defs.error ? <Panel><ErrorState error={defs.error} onRetry={() => defs.refetch()} /></Panel> : !defs.data?.length ? (
                   <Panel><EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="No queries raised" body="Queries raised during review appear here with every clarification and review outcome." /></Panel>
-                ) : defs.data.map((d) => <DeficiencyCard key={d.id} d={{ ...d, applications: { reference: a.reference, title: a.title, institution_id: a.institution_id, status: a.status } }}
-                  mode={staff ? 'staff' : 'institution'} institutionId={a.institution_id} canReview={workspace === 'officer'} />)}
+                ) : <>
+                  <ResponseWindowsNote />
+                  {defs.data.map((d) => { const dd = { ...d, applications: appRef }; return <DeficiencyCard key={d.id} d={dd}
+                    mode={staff ? 'staff' : 'institution'} institutionId={a.institution_id} canReview={canReview(dd)} />; })}
+                </>}
               </div>
             </TabPanel>
             <TabPanel value="evc"><EvcTab rows={evc.data} loading={evc.isLoading} name={name} /></TabPanel>
@@ -151,8 +168,9 @@ export function ApplicationDetailPage() {
         </div>
 
         <aside className="order-1 space-y-4 xl:sticky xl:top-[84px] xl:order-2 xl:self-start">
-          <NextActionCard a={a} isRep={isRep} transitions={transitions.data} awaitingReview={awaitingReview.length} openDefs={openDefs.length} onTab={setTab} />
-          {workspace === 'officer' && <OfficerActions a={a} transitions={transitions.data} loading={transitions.isLoading} openDeficiencies={openDefs.filter((d) => d.status !== 'correction_submitted').length} canAssign={can('assignment')} />}
+          <NextActionCard a={a} isRep={isRep} officer={officer} awaitingInstitution={a.queries_awaiting_institution} onTab={setTab} />
+          {workspace === 'officer' && officer && <OfficerActions a={a} state={officer} loading={transitions.isLoading || defs.isLoading} canAssign={can('assignment')} onRaise={() => setDraft({ title: '', reason: '', source: '', correction: '' })} />}
+          {draft && <RaiseDeficiencyDialog a={a} draft={draft} onClose={() => setDraft(null)} />}
           {workspace === 'admin' && <AdminActions a={a} canAssign={can('assignment')} />}
           <CaseFacts a={a} />
           {staff && <ObservationsCard id={a.id} name={name} canAdd={workspace === 'officer' && !['draft', 'completed', 'closed'].includes(a.status)} />}
@@ -174,20 +192,22 @@ function Person({ label, name, sub }: { label: string; name: string; sub?: strin
   );
 }
 
-function NextActionCard({ a, isRep, transitions, awaitingReview, openDefs, onTab }: {
-  a: ApplicationRow; isRep: boolean; transitions?: AvailableTransition[]; awaitingReview: number; openDefs: number; onTab: (t: string) => void;
+function NextActionCard({ a, isRep, officer, awaitingInstitution, onTab }: {
+  a: ApplicationRow; isRep: boolean; officer: OfficerCaseState | null; awaitingInstitution: number; onTab: (t: string) => void;
 }) {
   const { workspace } = useAuth();
   const closed = ['completed', 'closed'].includes(a.status);
   const withInstitution = a.status === 'returned_for_correction' || a.status === 'draft';
-  const due = a.status === 'returned_for_correction' ? a.correction_due_at : a.stage_due_at;
-  const permitted = (transitions ?? []).filter((t) => t.permitted);
+  const due = a.due_at;
   let cta: ReactNode = null;
   let yours = false;
+  let headline = closed ? 'Processing complete — decision recorded' : a.next_action ?? 'No action configured';
   if (workspace === 'institution' && isRep && a.status === 'draft') { yours = true; cta = <ButtonLink className="w-full" to={`/app/applications/new?draft=${a.id}`} icon={<FilePen className="h-4 w-4" />}>Continue draft</ButtonLink>; }
-  else if (workspace === 'institution' && isRep && a.status === 'returned_for_correction') { yours = true; cta = <Button className="w-full" icon={<ShieldAlert className="h-4 w-4" />} onClick={() => onTab('deficiencies')}>Respond to {openDefs} deficienc{openDefs === 1 ? 'y' : 'ies'}</Button>; }
-  else if (workspace === 'officer' && awaitingReview > 0) { yours = true; cta = <Button className="w-full" icon={<Eye className="h-4 w-4" />} onClick={() => onTab('deficiencies')}>Review {awaitingReview} correction{awaitingReview > 1 ? 's' : ''}</Button>; }
-  else if (workspace === 'officer' && permitted.length > 0) { yours = true; }
+  else if (workspace === 'institution' && isRep && awaitingInstitution > 0) { yours = true; headline = `Answer ${plural(awaitingInstitution, 'query', 'queries')} from AICTE`; cta = <Button className="w-full" icon={<ShieldAlert className="h-4 w-4" />} onClick={() => onTab('deficiencies')}>Respond to {plural(awaitingInstitution, 'query', 'queries')}</Button>; }
+  else if (workspace === 'officer' && officer) {
+    yours = officer.hasAction; headline = officer.headline;
+    if (officer.reviewCount > 0) cta = <Button className="w-full" icon={<Eye className="h-4 w-4" />} onClick={() => onTab('deficiencies')}>Review {plural(officer.reviewCount, 'correction')}</Button>;
+  }
 
   return (
     <motion.section layout className={cn('overflow-hidden rounded-card border bg-surface shadow-card', yours ? 'border-primary/40 ring-1 ring-primary/15' : 'border-line')}>
@@ -196,7 +216,7 @@ function NextActionCard({ a, isRep, transitions, awaitingReview, openDefs, onTab
           {yours ? <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden /> : <Workflow className="h-3.5 w-3.5" aria-hidden />}
           {closed ? 'Outcome' : yours ? 'Your next action' : 'Next required action'}
         </p>
-        <p className="mt-1.5 text-[16px] font-semibold leading-snug text-ink">{closed ? 'Processing complete — decision recorded' : a.next_action ?? 'No action configured'}</p>
+        <p className="mt-1.5 text-[16px] font-semibold leading-snug text-ink">{headline}</p>
       </div>
       <div className="space-y-4 px-5 py-4">
         {!closed && (
@@ -205,13 +225,12 @@ function NextActionCard({ a, isRep, transitions, awaitingReview, openDefs, onTab
         )}
         {!closed && (
           <div>
-            <p className="text-[11px] text-ink-faint">{a.status === 'returned_for_correction' ? 'Correction due' : 'Stage target date'} <span className="text-ink-faint">(internal target, IST)</span></p>
+            <p className="text-[11px] text-ink-faint">{a.status === 'returned_for_correction' ? 'Correction due' : 'Stage target date'} <span className="text-ink-faint">(date-only, IST)</span></p>
             <div className="mt-1">{due ? <DueBadge due={due} /> : <span className="text-[13px] text-ink-soft">No target configured for this stage</span>}</div>
           </div>
         )}
         {cta}
-        {workspace === 'officer' && !cta && permitted.length > 0 && <p className="text-xs text-ink-soft">Choose one of your permitted actions below.</p>}
-        {!yours && !closed && workspace !== 'admin' && <p className="text-xs text-ink-soft">Nothing for you to do on this case right now.</p>}
+        {workspace === 'institution' && !yours && !closed && <p className="text-xs text-ink-soft">Nothing for you to do on this case right now.</p>}
         {workspace === 'admin' && !closed && <p className="text-xs text-ink-soft">Administrators oversee applications; scrutiny and decisions stay with officers.</p>}
       </div>
     </motion.section>
@@ -223,8 +242,8 @@ export function CaseFacts({ a }: { a: ApplicationRow }) {
     <Panel title="Case facts">
       <dl className="divide-y divide-line text-[13px]">
         {[
-          ['Submitted', a.submitted_at ? `${fmtDate(a.submitted_at)} · ${a.age_days} days ago` : 'Not submitted'],
-          ['In current stage', a.submitted_at ? `${a.stage_age_days} days (${a.stage_name})` : '—'],
+          ['Submitted', a.submitted_at ? `${fmtDate(a.submitted_at)} · ${a.age_days === 0 ? 'today' : `${plural(a.age_days, 'day')} ago`}` : 'Not submitted'],
+          ['In current stage', a.submitted_at ? `${plural(a.stage_age_days, 'day')} (${a.stage_name})` : '—'],
           [REGIONAL_OFFICER_LABEL, a.assigned_officer_name ?? '—'],
           ['Region', a.region_code],
           ['Institution code', a.institution_code],
@@ -237,25 +256,24 @@ export function CaseFacts({ a }: { a: ApplicationRow }) {
   );
 }
 
-function OfficerActions({ a, transitions, loading, openDeficiencies, canAssign }: {
-  a: ApplicationRow; transitions?: AvailableTransition[]; loading: boolean; openDeficiencies: number; canAssign: boolean;
+function OfficerActions({ a, state, loading, canAssign, onRaise }: {
+  a: ApplicationRow; state: OfficerCaseState; loading: boolean; canAssign: boolean; onRaise: () => void;
 }) {
   const [active, setActive] = useState<AvailableTransition | null>(null);
-  const [def, setDef] = useState(false);
   const [ret, setRet] = useState(false);
   const [reassign, setReassign] = useState(false);
-  const review = ['scrutiny', 'evc', 'committee', 'decision'].includes(a.stage_kind ?? '');
   const closed = ['completed', 'closed', 'draft'].includes(a.status);
-  const permitted = (transitions ?? []).filter((t) => t.permitted);
-  const blocked = (transitions ?? []).filter((t) => !t.permitted);
+  if (closed && !canAssign) return null;
   return (
     <Panel title="Your actions" description="Re-checked on the server against your role, region and the route.">
       <div className="space-y-4 px-5 py-4">
-        {closed ? <p className="text-[13px] text-ink-soft">No actions in status “{humanize(a.status)}”.</p> : (
+        {loading ? <Skeleton className="h-10" /> : !state.hasAction ? (
+          <p className="text-[13px] text-ink-soft">{state.headline}.</p>
+        ) : (
           <>
-            {loading ? <Skeleton className="h-10" /> : permitted.length > 0 ? (
+            {state.routing.length > 0 && (
               <ul className="space-y-2">
-                {permitted.map((t) => (
+                {state.routing.map((t) => (
                   <li key={t.code}>
                     <Button className="w-full justify-between" onClick={() => setActive(t)} icon={t.records_decision ? <Gavel className="h-4 w-4" /> : undefined}>
                       <span className="truncate">{t.name}</span><ArrowRight className="h-4 w-4" aria-hidden />
@@ -263,19 +281,19 @@ function OfficerActions({ a, transitions, loading, openDeficiencies, canAssign }
                   </li>
                 ))}
               </ul>
-            ) : <p className="text-[13px] text-ink-soft">No routing action is available to you at this point.</p>}
-            {review && (
+            )}
+            {(state.canRaiseQuery || state.returnCount > 0) && (
               <div className="grid gap-2">
-                <Button variant="secondary" className="w-full justify-start" icon={<ShieldAlert className="h-4 w-4" />} onClick={() => setDef(true)}>Raise query</Button>
-                {openDeficiencies > 0 && a.status !== 'returned_for_correction' && (
-                  <Button variant="secondary" className="w-full justify-start" icon={<RotateCcw className="h-4 w-4" />} onClick={() => setRet(true)}>Return to institution ({openDeficiencies})</Button>
+                {state.canRaiseQuery && <Button variant="secondary" className="w-full justify-start" icon={<ShieldAlert className="h-4 w-4" />} onClick={onRaise}>Raise query</Button>}
+                {state.returnCount > 0 && (
+                  <Button variant="secondary" className="w-full justify-start" icon={<RotateCcw className="h-4 w-4" />} onClick={() => setRet(true)}>Return to institution ({state.returnCount})</Button>
                 )}
               </div>
             )}
-            {blocked.length > 0 && (
-              <Disclosure summary={`Not available right now (${blocked.length})`}>
+            {state.blocked.length > 0 && (
+              <Disclosure summary={`Not available right now (${state.blocked.length})`}>
                 <ul className="space-y-2.5">
-                  {blocked.map((t) => (
+                  {state.blocked.map((t) => (
                     <li key={t.code} className="rounded-lg bg-surface-muted px-3 py-2">
                       <p className="text-[13px] font-medium text-ink-soft">{t.name}</p>
                       <p className="mt-0.5 flex gap-1.5 text-xs text-ink-soft"><Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{t.blocked_reason}</p>
@@ -289,8 +307,7 @@ function OfficerActions({ a, transitions, loading, openDeficiencies, canAssign }
         {canAssign && !closed && <Button variant="ghost" className="w-full" icon={<UserCog className="h-4 w-4" />} onClick={() => setReassign(true)}>Reassign {REGIONAL_OFFICER_LABEL}</Button>}
       </div>
       {active && <TransitionDialog a={a} t={active} onClose={() => setActive(null)} />}
-      {def && <RaiseDeficiencyDialog a={a} onClose={() => setDef(false)} />}
-      {ret && <ReturnDialog a={a} count={openDeficiencies} onClose={() => setRet(false)} />}
+      {ret && <ReturnDialog a={a} count={state.returnCount} onClose={() => setRet(false)} />}
       {reassign && <ReassignDialog a={a} onClose={() => setReassign(false)} />}
     </Panel>
   );
@@ -318,8 +335,8 @@ const FIELD_LABELS: Record<string, string> = {
   land_area_acres: 'Land area (acres)', built_up_area_sqm: 'Built-up instructional area (sqm)',
 };
 
-function OverviewTab({ a, events, openDefs, docs, missingDocs, latestEvc, decisions, name, onTab }: {
-  a: ApplicationRow; events?: AppEvent[]; openDefs: Deficiency[]; docs: number; missingDocs: string[]; latestEvc?: EvcRow;
+function OverviewTab({ a, events, openDefs, openCount, docs, missingDocs, latestEvc, decisions, name, onTab }: {
+  a: ApplicationRow; events?: AppEvent[]; openDefs: Deficiency[]; openCount: number; docs: number; missingDocs: string[]; latestEvc?: EvcRow;
   decisions?: { id: string; decision: string; reason: string; recorded_by: string; created_at: string }[]; name: (id: string | null) => string; onTab: (t: string) => void;
 }) {
   return (
@@ -330,8 +347,8 @@ function OverviewTab({ a, events, openDefs, docs, missingDocs, latestEvc, decisi
         </Notice>
       )}
       <div className="grid gap-4 md:grid-cols-3">
-        <SummaryTile icon={ShieldAlert} tone={openDefs.length ? 'warning' : 'ok'} title="Queries" value={openDefs.length ? `${openDefs.length} open` : 'None open'}
-          body={openDefs.length ? openDefs.map((d) => d.title).join('; ') : 'No outstanding corrections.'} onClick={() => onTab('deficiencies')} />
+        <SummaryTile icon={ShieldAlert} tone={openCount ? 'warning' : 'ok'} title="Queries" value={openCount ? `${openCount} open` : 'None open'}
+          body={openCount ? openDefs.map((d) => d.title).join('; ') : 'No outstanding corrections.'} onClick={() => onTab('deficiencies')} />
         <SummaryTile icon={FileText} tone={missingDocs.length ? 'warning' : 'ok'} title="Documents" value={`${docs} on file`}
           body={missingDocs.length ? `Missing: ${missingDocs.join(', ')}` : 'All required documents uploaded.'} onClick={() => onTab('documents')} />
         <SummaryTile icon={CalendarCheck} tone={latestEvc?.is_overdue ? 'warning' : 'neutral'} title="Expert visit" value={latestEvc ? humanize(latestEvc.status) : 'Not on route yet'}
@@ -447,8 +464,8 @@ function EvcRecordCard({ e, name }: { e: EvcRow; name: (id: string | null) => st
           <div className="mt-4 border-t border-line pt-4" aria-label="Expert panel">
             <h3 className="text-[13px] font-semibold">Experts on the panel</h3>
             {!experts.data?.length ? <p className="mt-1 text-[13px] text-ink-soft">No expert added yet. Use Recommend panel to see eligible experts; anyone with a conflict of interest is excluded automatically.</p> : (
-              <ul className="mt-2 flex flex-wrap gap-2">{experts.data.map((x) => (
-                <li key={x.expert_id} className="rounded-lg border border-line px-3 py-1.5 text-[13px]"><span className="font-medium">{x.experts?.full_name ?? 'Expert'}</span>
+              <ul className="mt-2 flex flex-wrap gap-2">{[...experts.data].sort((p, q) => Number(!!q.is_chair) - Number(!!p.is_chair)).map((x) => (
+                <li key={x.expert_id} className="rounded-lg border border-line px-3 py-1.5 text-[13px]"><span className="font-medium">{x.experts?.full_name ?? 'Expert'}{x.is_chair ? ' (chair)' : ''}</span>
                   <span className="ml-2 text-xs text-ink-soft">{x.experts?.specializations.join(', ')} · {x.experts?.region_code}</span></li>
               ))}</ul>
             )}
@@ -548,7 +565,7 @@ function TransitionDialog({ a, t, onClose }: { a: ApplicationRow; t: AvailableTr
   );
 }
 
-function RaiseDeficiencyDialog({ a, onClose }: { a: ApplicationRow; onClose: () => void }) {
+function RaiseDeficiencyDialog({ a, draft, onClose }: { a: ApplicationRow; draft?: RuleQueryDraft; onClose: () => void }) {
   const reqs = useQuery({ queryKey: ['requirements-for', a.application_type_code], queryFn: async () => {
     const raw = await getApplication(a.id); return raw ? getRequirements(raw.application_type_code, raw.checklist_version) : [];
   } });
@@ -557,15 +574,15 @@ function RaiseDeficiencyDialog({ a, onClose }: { a: ApplicationRow; onClose: () 
   const win = context?.settings?.['deficiency.query_window'] as { hours?: number; source_reference?: string } | undefined;
   const windowHours = typeof win?.hours === 'number' && win.hours > 0 ? win.hours : null;
   const defaultDays = typeof period?.days === 'number' && period.days >= 1 ? period.days : null;
-  const [f, setF] = useState({ title: '', reason: '', source: '', correction: '', docType: '', due: '' });
+  const [f, setF] = useState({ title: draft?.title ?? '', reason: draft?.reason ?? '', source: draft?.source ?? '', correction: draft?.correction ?? '', docType: '', due: '' });
   const [useDefault, setUseDefault] = useState(defaultDays !== null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const act = useAction(() => raiseDeficiency({ applicationId: a.id, title: f.title, reason: f.reason, source: f.source, correction: f.correction, docType: f.docType || undefined,
     dueAt: windowHours || useDefault ? null : endOfDayIso(f.due) }),
-    { success: 'Query raised. Return the case to the institution to send it.', invalidate: [['deficiencies'], ['application'], ['matrix']], onSuccess: onClose });
+    { success: a.status === 'returned_for_correction' ? 'Query raised and sent to the institution; they have been notified.' : 'Query raised. Return the case to the institution to send it; they are notified when you do.', invalidate: [['deficiencies'], ['application'], ['matrix'], ['navcounts']], onSuccess: onClose });
   const valid = f.title.trim().length >= 5 && f.reason.trim().length >= 10 && f.source.trim().length >= 3 && f.correction.trim().length >= 10 && (windowHours !== null || useDefault || f.due);
   return (
-    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title="Raise query" description={a.reference}
+    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title={draft?.title ? 'Raise query on this rule' : 'Raise query'} description={a.reference}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={!valid} onClick={() => act.mutate(undefined)}>Raise query</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2"><TextField label="Title" required value={f.title} onChange={set('title')} /></div>
@@ -612,7 +629,8 @@ function ReturnDialog({ a, count, onClose }: { a: ApplicationRow; count: number;
 }
 
 function ReassignDialog({ a, onClose }: { a: ApplicationRow; onClose: () => void }) {
-  const dir = useQuery({ queryKey: ['directory'], queryFn: getDirectory });
+  const eligible = useQuery({ queryKey: ['eligible-officers', a.id], queryFn: () => getEligibleCaseOfficers(a.id) });
+  const choices = (eligible.data ?? []).filter((p) => p.officer_id !== a.assigned_officer_id);
   const [officer, setOfficer] = useState('');
   const [reason, setReason] = useState('');
   const act = useAction(() => reassignApplication(a.id, officer, reason), { success: 'Case reassigned.', invalidate: [['application'], ['applications']], onSuccess: onClose });
@@ -620,10 +638,15 @@ function ReassignDialog({ a, onClose }: { a: ApplicationRow; onClose: () => void
     <Dialog open onOpenChange={(o) => !o && onClose()} title={`Reassign ${REGIONAL_OFFICER_LABEL}`} description="Only officers holding this stage's responsibility in the region are accepted by the server."
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={!officer || reason.trim().length < 10} onClick={() => act.mutate(undefined)}>Reassign</Button></>}>
       <div className="space-y-4">
-        <SelectField label="Officer" required value={officer} onChange={(e) => setOfficer(e.target.value)}>
-          <option value="">Select…</option>
-          {(dir.data ?? []).filter((p) => p.roles?.includes('officer') && p.id !== a.assigned_officer_id).map((p) => <option key={p.id} value={p.id}>{p.full_name}{p.designation ? ` — ${p.designation}` : ''}</option>)}
-        </SelectField>
+        {eligible.isLoading ? <Skeleton className="h-10" /> : <p className="text-[13px] text-ink-soft">{eligible.data?.length === 1
+          ? `Only one officer is eligible for this stage in region ${a.region_code}: ${eligible.data[0].full_name}${eligible.data[0].officer_id === a.assigned_officer_id ? ' (already assigned).' : '.'}`
+          : `${plural(eligible.data?.length ?? 0, 'officer')} eligible for this stage in region ${a.region_code}.`}</p>}
+        {choices.length > 0 && (
+          <SelectField label="Officer" required value={officer} onChange={(e) => setOfficer(e.target.value)}>
+            <option value="">Select…</option>
+            {choices.map((p) => <option key={p.officer_id} value={p.officer_id}>{p.full_name}{p.designation ? ` — ${p.designation}` : ''}</option>)}
+          </SelectField>
+        )}
         <TextAreaField label="Reason" required rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
       </div>
     </Dialog>
@@ -670,5 +693,48 @@ function ObservationsCard({ id, name, canAdd }: { id: string; name: (id: string 
         </Dialog>
       )}
     </Panel>
+  );
+}
+
+/** The case's reviews: concurrent review tasks (where the route runs them) and every stage of the route with its owner and state. */
+function ReviewsTab({ a, history, stages, officer }: {
+  a: ApplicationRow; history?: StageHistory[]; stages?: WorkflowStage[]; officer: OfficerCaseState | null; name?: (id: string | null) => string;
+}) {
+  const order = (stages ?? []).filter((s) => s.kind !== 'terminal').sort((x, y) => x.sequence - y.sequence);
+  const current = order.find((s) => s.code === a.current_stage);
+  const closed = ['completed', 'closed'].includes(a.status);
+  const stateOf = (s: WorkflowStage): { label: string; tone: 'success' | 'accent' | 'neutral' | 'warning'; why?: string } => {
+    if (closed || (current && s.sequence < current.sequence)) return { label: 'Complete', tone: 'success' };
+    if (s.code === a.current_stage) {
+      if (a.status === 'returned_for_correction') return { label: 'Blocked', tone: 'warning', why: `Waiting for the institution to answer ${plural(a.queries_awaiting_institution, 'query', 'queries')}.` };
+      if (officer && officer.blocked.length && !officer.routing.length) return { label: 'In progress', tone: 'accent', why: officer.blocked[0].blocked_reason ?? undefined };
+      return { label: 'In progress', tone: 'accent' };
+    }
+    return { label: 'Waiting', tone: 'neutral', why: `Starts after ${current?.name ?? 'the current stage'}.` };
+  };
+  const entered = (code: string) => (history ?? []).filter((h) => h.stage_code === code).at(-1);
+  return (
+    <div className="space-y-4">
+      <ReviewTasksPanel applicationId={a.id} />
+      <Panel title="Review pipeline" description="Every stage on this case's route, who owns it and where it stands.">
+        <ul className="divide-y divide-line">
+          {order.map((s) => {
+            const st = stateOf(s);
+            const h = entered(s.code);
+            const owner = s.code === a.current_stage ? (a.assigned_officer_name ?? 'Not yet assigned') : st.label === 'Complete' ? 'completed' : 'assigned when it starts';
+            return (
+              <li key={s.code} className="flex flex-wrap items-start justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="text-[13.5px] font-medium">{s.name}</p>
+                  <p className="text-xs text-ink-soft">{responsibilityLabel(s.responsible_capability)} · owner {owner}{h ? ` · entered ${fmtDateTime(h.entered_at)}` : ''}</p>
+                  {st.why && <p className="mt-0.5 text-xs text-ink-soft">{st.why}</p>}
+                </div>
+                <Badge tone={st.tone}>{st.label}</Badge>
+              </li>
+            );
+          })}
+        </ul>
+      </Panel>
+    </div>
   );
 }

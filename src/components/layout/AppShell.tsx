@@ -14,7 +14,7 @@ import { Glossary } from '@/features/help/Glossary';
 import { cn } from '@/lib/cn';
 import { listNotifications, markRead } from '@/services/operations';
 import { useNavCounts } from '@/hooks/useNavCounts';
-import { fmtDateTime, humanize } from '@/lib/format';
+import { fmtDateTime, humanize, notificationDue, plainText } from '@/lib/format';
 import { responsibilityLabel } from '@/lib/responsibilities';
 import type { Role } from '@/types/domain';
 
@@ -177,7 +177,8 @@ function NotificationsMenu() {
                         <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', x.read_at ? 'bg-transparent' : x.kind === 'escalation' ? 'bg-danger' : 'bg-accent')} aria-label={x.read_at ? undefined : 'Unread'} />
                         <span className="min-w-0">
                           <span className="block text-[13px] font-medium text-ink">{x.title}</span>
-                          <span className="mt-0.5 block text-xs text-ink-soft">{x.body}</span>
+                          <span className="mt-0.5 block text-xs text-ink-soft">{plainText(x.body)}</span>
+                          {notificationDue(x) && <span className="mt-0.5 block text-xs font-medium text-ink">{notificationDue(x)}</span>}
                           <span className="mt-1 block text-[11px] text-ink-faint">{humanize(x.kind)} · {fmtDateTime(x.created_at)}</span>
                         </span>
                       </motion.div>
@@ -316,7 +317,8 @@ export function AppShell() {
               <button className="rounded-lg p-2 text-ink-soft hover:bg-surface-muted lg:hidden" onClick={() => setDrawer(true)} aria-label="Open navigation"><Menu className="h-5 w-5" /></button>
               <Breadcrumb />
               <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:gap-2">
-                <GlobalSearch />
+                {/* one search box per page: list pages with their own search do not repeat it in the header */}
+                {!/^\/app\/(applications|queue|admin\/users|evc\/experts)\/?$/.test(loc.pathname) && <GlobalSearch />}
                 <TT.Root>
                   <TT.Trigger asChild>
                     <span tabIndex={0} className="hidden shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[#eedcb1] bg-warning-soft px-2.5 py-1 text-[11px] font-semibold text-[#7a5100] sm:inline-flex">

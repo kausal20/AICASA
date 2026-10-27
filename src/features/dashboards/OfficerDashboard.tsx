@@ -6,6 +6,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { listApplications } from '@/services/applications';
 import { getAnalytics, listDeficiencies, listEscalations, listEvc, listObligations, listReviewTasks, listTasks } from '@/services/operations';
 import { REVIEW_STATUS } from '@/features/applications/ReviewTasksPanel';
+import { useCanReview } from '@/features/deficiencies/DeficienciesPage';
 import { DueBadge, StatusBadge, Badge } from '@/components/ui/Badge';
 import { EmptyState, LoadingRows } from '@/components/ui/States';
 import { Kpi, PageTitle, Panel } from '@/components/ui/Workspace';
@@ -34,7 +35,8 @@ export function OfficerDashboard() {
 
   const open = (queue.data?.rows ?? []).filter((r) => !['completed', 'closed', 'draft'].includes(r.status));
   const overdueCases = open.filter((r) => r.is_overdue);
-  const reviews = (defs.data ?? []).filter((d) => d.status === 'correction_submitted');
+  const canReview = useCanReview();
+  const reviews = (defs.data ?? []).filter((d) => d.status === 'correction_submitted' && canReview(d));
   const toSchedule = (evc.data ?? []).filter((e) => e.status === 'awaiting_scheduling');
   const toVerify = (obl.data ?? []).filter((o) => ['submitted', 'under_verification'].includes(o.status));
   const scope = activeAssignments.map((a) => a.region_code ?? 'National').join(', ');
@@ -49,7 +51,7 @@ export function OfficerDashboard() {
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Kpi label="My open applications" value={open.length} loading={queue.isLoading} icon={Inbox} to="/app/queue" />
         <Kpi label="My overdue applications" value={overdueCases.length} loading={queue.isLoading} icon={Hourglass} tone={overdueCases.length ? 'danger' : 'neutral'} to="/app/queue?overdue=1" />
-        <Kpi label="Clarifications to review" value={reviews.length} loading={defs.isLoading} icon={Eye} tone={reviews.length ? 'warning' : 'neutral'} to="/app/deficiencies" />
+        <Kpi label="Corrections to review" value={reviews.length} loading={defs.isLoading} icon={Eye} tone={reviews.length ? 'warning' : 'neutral'} to="/app/deficiencies" />
         {can('evc') && <Kpi label="EVCs to schedule" value={toSchedule.length} loading={evc.isLoading} icon={CalendarClock} tone={toSchedule.length ? 'warning' : 'neutral'} to="/app/evc?tab=queue" />}
         {can('compliance') && <Kpi label="Evidence to verify" value={toVerify.length} loading={obl.isLoading} icon={ClipboardCheck} tone={toVerify.length ? 'warning' : 'neutral'} to="/app/compliance?status=submitted" />}
         <Kpi label="Open escalations" value={esc.data?.length ?? 0} loading={esc.isLoading} icon={Siren} tone={esc.data?.length ? 'danger' : 'neutral'} to="/app/escalations?status=open" />
@@ -69,10 +71,10 @@ export function OfficerDashboard() {
             ))}</ul>
           )}
         </Panel>
-        <Panel className="xl:col-span-4" title="Clarifications awaiting your review">
-          {!reviews.length ? <EmptyState title="Nothing to review" /> : (
+        <Panel className="xl:col-span-4" title="Corrections awaiting your review">
+          {defs.isLoading ? <LoadingRows rows={3} /> : !reviews.length ? <EmptyState title="Nothing to review" /> : (
             <ul className="divide-y divide-line">{reviews.slice(0, 5).map((d) => (
-              <li key={d.id}><Link to={`/app/applications/${d.application_id}?tab=deficiencies`} className="block px-5 py-3 hover:bg-surface-muted/60"><p className="text-[13px] font-medium text-accent">{d.applications?.reference}</p><p className="text-xs text-ink-soft">{d.title}</p></Link></li>
+              <li key={d.id}><Link to={`/app/applications/${d.application_id}?tab=deficiencies&query=${d.id}`} className="block px-5 py-3 hover:bg-surface-muted/60"><p className="text-[13px] font-medium text-accent">{d.applications?.reference}</p><p className="text-xs text-ink-soft">{d.title}</p></Link></li>
             ))}</ul>
           )}
         </Panel>

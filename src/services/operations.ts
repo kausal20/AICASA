@@ -9,7 +9,7 @@ import type {
 // ---- Deficiencies ---------------------------------------------------------
 export async function listDeficiencies(opts: { applicationId?: string; openOnly?: boolean } = {}) {
   let q = supabase.from('deficiencies')
-    .select('*, deficiency_submissions(*), deficiency_reviews(*), applications(reference, title, institution_id, status)')
+    .select('*, deficiency_submissions(*), deficiency_reviews(*), applications(reference, title, institution_id, status, current_stage, region_code, application_type_code, checklist_version)')
     .order('raised_at', { ascending: false });
   if (opts.applicationId) q = q.eq('application_id', opts.applicationId);
   if (opts.openOnly) q = q.not('status', 'in', '(resolved,withdrawn)');
@@ -224,7 +224,7 @@ export async function listTasks(opts: { mine?: string; status?: string } = {}) {
 }
 
 export async function listNotifications(limit = 50) {
-  return unwrap(await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(limit)) as NotificationRow[];
+  return unwrap(await supabase.from('v_notifications').select('*').order('created_at', { ascending: false }).limit(limit)) as NotificationRow[];
 }
 
 export async function unreadCount() {
@@ -246,13 +246,17 @@ export async function setPreference(kind: string, inApp: boolean, email: boolean
 }
 
 export async function listEscalations(status?: string) {
-  let q = supabase.from('v_escalations').select('*').order('triggered_at', { ascending: false });
+  let q = supabase.from('v_escalations').select('*').order('latest_notice_at', { ascending: false });
   if (status) q = q.eq('status', status);
   return unwrap(await q.limit(200)) as EscalationRow[];
 }
 
 export async function updateEscalation(id: string, action: 'acknowledge' | 'resolve', note: string) {
   return unwrap(await supabase.rpc('update_escalation_event', { p_event_id: id, p_action: action, p_note: note }));
+}
+
+export async function acknowledgeEscalations(ids: string[], note: string) {
+  return unwrap(await supabase.rpc('acknowledge_escalations', { p_event_ids: ids, p_note: note || null })) as number;
 }
 
 export async function getAnalytics(region?: string | null) {

@@ -13,10 +13,12 @@ export function windowState(closesAt: string | null | undefined, now: number = D
   return { hasWindow: true, closed: remainingMs <= 0, remainingMs };
 }
 
-/** "37h 12m left", "<1m left" or "Window expired". Minutes are rounded down. */
-export function formatRemaining(remainingMs: number): string {
-  if (remainingMs <= 0) return 'Window expired';
+/** "37h 12m left", "5d 03h left" (beyond 48 hours), "<1m left" or "Window expired". Minutes are rounded down. Both sides use this. */
+export function formatRemaining(remainingMs: number, expired = 'Window expired'): string {
+  if (remainingMs <= 0) return expired;
   const mins = Math.floor(remainingMs / 60_000);
   if (mins < 1) return '<1m left';
-  return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m left`;
+  const hours = Math.floor(mins / 60);
+  if (mins > 48 * 60) return `${Math.floor(hours / 24)}d ${String(hours % 24).padStart(2, '0')}h left`;
+  return `${hours}h ${String(mins % 60).padStart(2, '0')}m left`;
 }

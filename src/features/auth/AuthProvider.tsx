@@ -16,6 +16,8 @@ interface AuthState {
   institution: InstitutionRef | null;
   setInstitution: (id: string) => void;
   can: (cap: Capability) => boolean;
+  /** Holds the responsibility for this region (or nationally) in the current workspace. */
+  canIn: (cap: Capability, region: string | null | undefined) => boolean;
   isNational: boolean;
   regions: string[];
   refresh: () => Promise<void>;
@@ -62,6 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+        // a new sign-in always starts in the account's own default workspace, never one remembered from another account
+        if (event !== 'USER_UPDATED') { try { localStorage.removeItem(WS_KEY); } catch { /* preference only */ } }
         qc.clear();
         loadContext(s);
       }
@@ -81,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setInstitution: (id) => { setInstitutionId(id); writePref(INST_KEY, id); },
       // UI hints only — every action is re-checked by the database.
       can: (cap) => wsAssignments.some((a) => a.capabilities.includes(cap)),
+      canIn: (cap, region) => wsAssignments.some((a) => a.capabilities.includes(cap) && (a.region_code === null || a.region_code === region)),
       isNational: wsAssignments.some((a) => a.region_code === null),
       regions: [...new Set(wsAssignments.map((a) => a.region_code).filter(Boolean) as string[])],
       refresh: () => loadContext(session),

@@ -31,6 +31,8 @@ export interface ApplicationRow {
   created_at: string; updated_at: string; row_version: number; is_demo: boolean; workflow_version_id: string;
   route_version: number; route_name: string; age_days: number; stage_age_days: number; is_overdue: boolean;
   open_deficiencies: number; correction_due_at: string | null;
+  /** The deadline that decides overdue: the correction due date while returned to the institution, else the stage target. */
+  due_at: string | null; is_due_today: boolean; queries_awaiting_institution: number; queries_awaiting_review: number;
 }
 
 export interface Application {
@@ -82,7 +84,7 @@ export interface Observation { id: string; stage_code: string; author_id: string
 
 export interface DocumentRecord {
   id: string; institution_id: string; application_id: string | null; doc_type: string; title: string; current_version: number;
-  created_at: string; updated_at: string; document_versions?: DocumentVersion[];
+  created_at: string; updated_at: string; document_versions?: DocumentVersion[]; applications?: { reference: string } | null;
 }
 export interface DocumentVersion {
   id: string; document_id: string; version: number; storage_bucket: string; storage_path: string; file_name: string; mime_type: string;
@@ -116,7 +118,9 @@ export interface Deficiency {
   /** captured_at_raise = recorded when the memo was raised; inferred_unverified = reconstructed later and not proven; null = none */
   affected_version_basis: 'captured_at_raise' | 'seed_fixture_verified' | 'inferred_unverified' | null;
   deficiency_submissions?: DeficiencySubmission[]; deficiency_reviews?: DeficiencyReview[];
-  applications?: { reference: string; title: string; institution_id: string; status: ApplicationStatus };
+  /** When the query was sent to the institution (the case was returned for correction); null = still with AICTE */
+  sent_at: string | null; sent_by: string | null;
+  applications?: { reference: string; title: string; institution_id: string; status: ApplicationStatus; current_stage?: string; region_code?: string; application_type_code?: string; checklist_version?: number };
 }
 export interface DeficiencySubmission { id: string; deficiency_id: string; attempt: number; response_text: string; document_version_id: string | null; submitted_by: string; submitted_at: string }
 export interface DeficiencyReview { id: string; deficiency_id: string; submission_id: string; outcome: string; reason: string; reviewed_by: string; reviewed_at: string }
@@ -128,6 +132,7 @@ export interface EvcRow {
   completion_summary: string | null; completed_at: string | null; reschedule_count: number; row_version: number;
   reference: string; application_title: string; institution_id: string; institution_name: string; region_code: string;
   application_status: ApplicationStatus; coordinator_name: string | null; age_days: number; is_overdue: boolean;
+  panel?: { expert_id: string; full_name: string; is_chair: boolean }[];
 }
 export interface EvcHistory { id: string; evc_id: string; action: string; from_status: string | null; to_status: string | null; scheduled_start: string | null; scheduled_end: string | null; reason: string | null; actor_id: string | null; created_at: string }
 
@@ -159,6 +164,8 @@ export interface TaskRow {
 export interface NotificationRow {
   id: string; recipient_id: string; kind: string; title: string; body: string; link: string | null; entity_type: string | null;
   entity_id: string | null; created_at: string; read_at: string | null;
+  /** Live due date of what the notification is about, read from that record (never copied into the text). */
+  subject_due_at?: string | null; subject_due_label?: string | null;
 }
 
 export interface EscalationRow {
@@ -166,6 +173,9 @@ export interface EscalationRow {
   region_code: string | null; repeat_no: number; due_at: string | null; summary: string; status: 'open' | 'acknowledged' | 'resolved';
   triggered_at: string; acknowledged_at: string | null; resolved_at: string | null; resolution_note: string | null;
   rule_code: string; rule_version: number; rule_kind: string; rule_recipient: string; application_reference: string | null; institution_name: string | null;
+  rule_offset_hours: number; rule_repeat_interval_hours: number | null; rule_max_repeats: number;
+  /** One escalation per case/entity + rule + due date; each repeat notice is a timeline entry. */
+  notice_count: number; latest_notice_at: string; notices: { notice: number; scheduled_at: string | null; triggered_at: string }[];
 }
 
 export interface EscalationRule {
@@ -243,7 +253,7 @@ export interface Expert {
   is_active: boolean; is_demo: boolean; created_at: string; institutions?: { name: string } | null;
 }
 export interface ExpertAvailability { id: string; expert_id: string; kind: 'available' | 'unavailable'; starts_at: string; ends_at: string; note: string | null; withdrawn_at: string | null }
-export interface EvcPanelExpert { evc_id: string; expert_id: string; assigned_at: string; experts?: Pick<Expert, 'id' | 'full_name' | 'specializations' | 'region_code' | 'home_district'> | null }
+export interface EvcPanelExpert { evc_id: string; expert_id: string; assigned_at: string; is_chair?: boolean; experts?: Pick<Expert, 'id' | 'full_name' | 'specializations' | 'region_code' | 'home_district'> | null }
 /** Server time-stamped, geo-tagged inspection report uploaded against an EVC session. */
 export interface EvcReport {
   id: string; evc_id: string; uploaded_by: string; file_name: string; storage_path: string; size_bytes: number; sha256: string | null;

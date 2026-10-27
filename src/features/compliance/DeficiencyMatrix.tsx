@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertOctagon, CheckCircle2, CircleDashed, CircleHelp, FileWarning, ListChecks, ScanEye, TriangleAlert } from 'lucide-react';
+import { AlertOctagon, CheckCircle2, CircleDashed, CircleHelp, FileWarning, ListChecks, MessageSquareWarning, ScanEye, TriangleAlert } from 'lucide-react';
 import { getDeficiencyMatrix, recheckMatrixDeficiencies } from '@/services/operations';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { useAction } from '@/hooks/useAction';
 import { Button } from '@/components/ui/Button';
 import { Badge, type Tone } from '@/components/ui/Badge';
-import { Panel } from '@/components/ui/Workspace';
+import { Disclosure, Panel } from '@/components/ui/Workspace';
+import { humanize, plainText, plural, verb } from '@/lib/format';
 import { ErrorState, LoadingRows } from '@/components/ui/States';
 import { cn } from '@/lib/cn';
 import type { MatrixResult, MatrixRow } from '@/types/domain';
@@ -31,7 +32,21 @@ const SECTIONS: Record<MatrixRow['section'], string> = {
  * Server-evaluated checks; evaluations reconcile rule queries for cases under processing.
  * `audience` adjusts the next-action wording for the institution (before submitting) or the scrutinising officer.
  */
-export function DeficiencyMatrix({ applicationId, audience }: { applicationId: string; audience: 'institution' | 'staff' }) {
+/** What an officer needs to raise a query on one failing matrix row, in plain language. */
+export interface RuleQueryDraft { title: string; reason: string; source: string; correction: string }
+export function ruleQueryDraft(r: MatrixRow, reference: string): RuleQueryDraft {
+  const label = r.label;
+  return {
+    title: `${label}: requirement not met`,
+    reason: `${reference}: ${label}. Declared ${plainText(r.input_value)}; required ${plainText(r.requirement)}. ${plainText(r.explanation)}`.trim(),
+    source: `Deficiency Matrix rule: ${label} (${r.is_synthetic ? 'demonstration configuration' : plainText(r.source)})`,
+    correction: `Correct the declared figure for "${label}" or upload evidence that the requirement (${plainText(r.requirement)}) is met.`,
+  };
+}
+
+export function DeficiencyMatrix({ applicationId, audience, onRaiseQuery }: {
+  applicationId: string; audience: 'institution' | 'staff'; onRaiseQuery?: (r: MatrixRow) => void;
+}) {
   const q = useQuery({ queryKey: ['matrix', applicationId], queryFn: () => getDeficiencyMatrix(applicationId) });
   const qc = useQueryClient();
   useEffect(() => {
@@ -39,7 +54,7 @@ export function DeficiencyMatrix({ applicationId, audience }: { applicationId: s
     for (const key of ['deficiencies', 'application', 'applications', 'navcounts']) void qc.invalidateQueries({ queryKey: [key] });
   }, [q.dataUpdatedAt, qc]);
   const { workspace, can } = useAuth();
-  const canRecheck = audience === 'staff' && workspace === 'officer' && can('scrutiny');
+  const canRecheck = audience === 'staff' && workspace === 'officer' && can('scrutiny') && !!onRaiseQuery;
   const recheck = useAction(() => recheckMatrixDeficiencies(applicationId), {
     success: (r) => r.skipped ? r.skipped : `Rules re-checked: ${r.created} opened, ${r.updated} updated, ${r.resolved} resolved.`,
     invalidate: [['matrix'], ['deficiencies'], ['application'], ['applications'], ['navcounts']],
@@ -52,9 +67,9 @@ export function DeficiencyMatrix({ applicationId, audience }: { applicationId: s
   const failed = counts.failed_validation;
   const attention = counts.potential_issue + counts.manual_review + counts.extraction_failed;
   const next = failed
-    ? audience === 'institution' ? `Correct ${failed} failed item${failed === 1 ? '' : 's'} before submitting.` : `${failed} item${failed === 1 ? '' : 's'} failed validation; consider recording a deficiency.`
+    ? audience === 'institution' ? `Correct ${plural(failed, 'failed item')} before submitting.` : `${plural(failed, 'item')} failed validation; consider raising a query.`
     : attention
-      ? audience === 'institution' ? `Review ${attention} flagged item${attention === 1 ? '' : 's'}; the officer will look at them during scrutiny.` : `${attention} item${attention === 1 ? '' : 's'} need your judgement.`
+      ? audience === 'institution' ? `Review ${plural(attention, 'flagged item')}; the officer will look at ${verb(attention, 'it', 'them')} during scrutiny.` : `${plural(attention, 'item')} ${verb(attention, 'needs', 'need')} your judgement.`
       : 'No failed or flagged items in the checks that could be run.';
 
   return (
@@ -95,11 +110,15 @@ export function DeficiencyMatrix({ applicationId, audience }: { applicationId: s
               return (
                 <section key={sec} aria-label={SECTIONS[sec]}>
                   <h3 className="border-b border-line bg-surface-muted/60 px-5 py-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-ink-soft">{SECTIONS[sec]}</h3>
+                  {sec === 'form' && <p className="border-b border-line px-5 py-1.5 text-xs text-ink-soft">Form fields check presence and format only (“Provided”); the configured rules below check the quantities.</p>}
                   <ul className="divide-y divide-line">
                     <AnimatePresence initial={false}>
-                      {items.map((r) => <MatrixItem key={r.check_code} r={r} />)}
+                      {items.map((r) => <MatrixItem key={r.check_code} r={r} onRaiseQuery={onRaiseQuery} />)}
                     </AnimatePresence>
                   </ul>
+                  {sec === 'rules' && items.some((r) => r.check_code.startsWith('rule:faculty_cadre_ratio')) && (
+                    <p className="border-t border-line px-5 py-2 text-xs text-ink-soft">Cadre numbers are rounded up per post — totals may differ from the raw ratio.</p>
+                  )}
                 </section>
               );
             })
@@ -116,23 +135,29 @@ export function DeficiencyMatrix({ applicationId, audience }: { applicationId: s
   );
 }
 
-function MatrixItem({ r }: { r: MatrixRow }) {
-  const s = RESULT[r.result] ?? { label: r.result, tone: 'neutral' as Tone, icon: CircleHelp };
+function MatrixItem({ r, onRaiseQuery }: { r: MatrixRow; onRaiseQuery?: (r: MatrixRow) => void }) {
+  const base = RESULT[r.result] ?? { label: humanize(r.result), tone: 'neutral' as Tone, icon: CircleHelp };
+  // a form-field "pass" is a presence check, not a rule outcome
+  const s = r.section === 'form' && r.result === 'passed' ? { ...base, label: 'Provided' } : base;
   const Icon = s.icon;
+  const failing = r.section === 'rules' && ['potential_issue', 'failed_validation'].includes(r.result);
   return (
     <motion.li layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
       className="grid gap-x-4 gap-y-1 px-5 py-3 sm:grid-cols-[minmax(0,1fr)_auto]">
       <div className="min-w-0">
-        <p className="flex flex-wrap items-center gap-2 text-[13.5px] font-medium text-ink">
-          {r.label}
-        </p>
+        <p className="flex flex-wrap items-center gap-2 text-[13.5px] font-medium text-ink">{r.label}</p>
         <p className="mt-0.5 text-xs text-ink-soft tabular">
-          Input: <span className="font-medium text-ink">{r.input_value}</span> <span aria-hidden>·</span> Requirement: {r.requirement}
+          Input: <span className="font-medium text-ink">{plainText(r.input_value)}</span> <span aria-hidden>·</span> Requirement: {plainText(r.requirement)}
         </p>
-        <p className="mt-1 text-[13px] text-ink-soft">{r.explanation}</p>
-        <p className="mt-1 text-[11.5px] text-ink-faint">Rule {r.rule_ref} · Source: {r.source}</p>
+        <p className="mt-1 text-[13px] text-ink-soft">{plainText(r.explanation)}</p>
+        <div className="mt-1"><Disclosure summary={<span className="text-[11.5px]">Technical details</span>}>
+          <p className="text-[11.5px] text-ink-faint">Rule {r.rule_ref} · Source: {r.source}</p>
+        </Disclosure></div>
       </div>
-      <div className="sm:pt-0.5"><Badge tone={s.tone} icon={<Icon className="h-3 w-3" aria-hidden />}>{s.label}</Badge></div>
+      <div className="flex flex-col items-start gap-2 sm:items-end sm:pt-0.5">
+        <Badge tone={s.tone} icon={<Icon className="h-3 w-3" aria-hidden />}>{s.label}</Badge>
+        {failing && onRaiseQuery && <Button size="sm" variant="secondary" icon={<MessageSquareWarning className="h-3.5 w-3.5" />} onClick={() => onRaiseQuery(r)}>Raise query on this rule</Button>}
+      </div>
     </motion.li>
   );
 }

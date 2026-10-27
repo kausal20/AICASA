@@ -2,7 +2,7 @@ import { motion } from 'motion/react';
 import { AlertTriangle, Check, RotateCcw, Split } from 'lucide-react';
 import type { ApplicationStatus, StageHistory, WorkflowStage, WorkflowTransition } from '@/types/domain';
 import { cn } from '@/lib/cn';
-import { fmtDate } from '@/lib/format';
+import { dueState, fmtDate } from '@/lib/format';
 
 type State = 'completed' | 'active' | 'returned' | 'overdue' | 'upcoming' | 'conditional' | 'skipped';
 
@@ -23,7 +23,7 @@ export function WorkflowTracker({ stages, transitions, history, current, status,
     if (s.code === current) {
       if (s.kind === 'terminal') return 'completed';
       if (status === 'returned_for_correction') return 'returned';
-      if (stageDueAt && new Date(stageDueAt) < new Date()) return 'overdue';
+      if (stageDueAt && dueState(stageDueAt) === 'overdue') return 'overdue';
       return 'active';
     }
     if (s.sequence < currentSeq) return visited.has(s.code) ? 'completed' : 'skipped';
@@ -77,7 +77,7 @@ export function WorkflowTracker({ stages, transitions, history, current, status,
             <span className="min-w-0 sm:px-1">
               <span className={cn('block text-[13px] font-medium', st === 'upcoming' || st === 'conditional' || st === 'skipped' ? 'text-ink-soft' : 'text-ink')}>{s.name}</span>
               <span className="block text-xs text-ink-soft">{label[st]}</span>
-              {h && <span className="block text-[11px] text-ink-faint tabular">{fmtDate(h.entered_at)}{h.exited_at ? ` – ${fmtDate(h.exited_at)}` : ''}</span>}
+              {h && h.entered_at && <span className="block text-[11px] text-ink-faint tabular">{fmtDate(h.entered_at)}{h.exited_at ? ` – ${fmtDate(h.exited_at)}` : ''}</span>}
               {!h && s.sla_days && st !== 'skipped' && <span className="block text-[11px] text-ink-faint">Target {s.sla_days} days</span>}
             </span>
           </li>

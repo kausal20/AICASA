@@ -4,19 +4,17 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useReducedMotion } from 'motion/react';
 import {
-  AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardCheck, FileStack, Hourglass, RefreshCw, Siren, TimerReset, Undo2, Workflow,
+  AlertTriangle, CalendarClock, CheckCircle2, ClipboardCheck, FileStack, Hourglass, RefreshCw, Siren, TimerReset, Undo2, Workflow,
 } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { getAnalytics, listEscalations } from '@/services/operations';
 import { listRegions } from '@/services/admin';
 import { Button } from '@/components/ui/Button';
-import { StatusBadge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Field';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/States';
 import { Kpi, PageTitle, Panel } from '@/components/ui/Workspace';
-import { fmtDateTime, humanize } from '@/lib/format';
-import { AuditStream } from './AuditStream';
+import { codeLabel, fmtDateTime, plainText, plural } from '@/lib/format';
 
 export const CHART = { primary: '#1e3a8a', primarySoft: '#93A8DB', warn: '#C98A12', danger: '#B42318', accent: '#236B9A', muted: '#94A3B8', grid: '#E2E7F0' };
 export const axis = { fontSize: 12, fill: '#475569' };
@@ -48,9 +46,9 @@ export function AdminDashboard() {
   const d = q.data;
   const scopeLabel = region ? `Region ${region}` : isNational ? 'All regions (national scope)' : 'Your regions';
   const r = (p: string) => withRegion(p, region);
-  const evcData = d ? (['awaiting_scheduling', 'proposed', 'scheduled', 'completed'] as const).map((k) => ({ key: k, name: humanize(k), count: d.evc[k] ?? 0 })) : [];
-  const complianceKeys = ['overdue', 'due_soon', 'awaiting_submission', 'correction_required', 'submitted', 'upcoming', 'verified'];
-  const escalationsInScope = (esc.data ?? []).filter((e) => !region || e.region_code === region);
+  // one row per case: its most recent open escalation
+  const escalationsInScope = (esc.data ?? []).filter((e) => !region || e.region_code === region)
+    .filter((e, i, all) => all.findIndex((x) => (x.application_id ?? x.entity_id) === (e.application_id ?? e.entity_id)) === i);
 
   return (
     <div>
@@ -84,7 +82,7 @@ export function AdminDashboard() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Kpi label="All applications" value={d?.totals.all ?? 0} loading={!d} icon={FileStack} to={r('/app/applications')} hint={`${d?.totals.draft ?? 0} still in draft`} />
               <Kpi label="In process" value={d?.totals.in_process ?? 0} loading={!d} icon={Workflow} tone="accent" to={r('/app/applications?group=open')} hint={`${d?.totals.under_scrutiny ?? 0} under scrutiny`} />
-              <Kpi label="With institutions" value={d?.totals.awaiting_institution ?? 0} loading={!d} icon={Undo2} tone={d?.totals.awaiting_institution ? 'warning' : 'neutral'} to={r('/app/applications?status=returned_for_correction')} hint={`${d?.totals.correction_submitted ?? 0} corrections awaiting review`} />
+              <Kpi label="With institutions" value={d?.totals.awaiting_institution ?? 0} loading={!d} icon={Undo2} tone={d?.totals.awaiting_institution ? 'warning' : 'neutral'} to={r('/app/applications?status=returned_for_correction')} hint={`Drafts excluded · ${plural(d?.totals.correction_submitted ?? 0, 'correction')} awaiting review`} />
               <Kpi label="Completed" value={d?.totals.completed ?? 0} loading={!d} icon={CheckCircle2} tone="primary" to={r('/app/applications?group=closed')} hint="Decision recorded by an officer" />
             </div>
           </section>
@@ -122,27 +120,6 @@ export function AdminDashboard() {
                 )}
               </Panel>
 
-              <Panel className="xl:col-span-5" title="Ageing of open applications" description="Days since submission. Select a bar to open that age band.">
-                <div className="px-3 pb-4 pt-4">
-                  {!d.ageing.length ? <EmptyState title="No open applications" /> : (
-                    <div className="h-64" role="img" aria-label={`Ageing: ${d.ageing.map((a) => `${a.bucket} ${a.count}`).join(', ')}`}>
-                      <ResponsiveContainer>
-                        <BarChart data={d.ageing} margin={{ left: -18, right: 8, top: 4 }} barCategoryGap="30%">
-                          <CartesianGrid vertical={false} stroke={CHART.grid} />
-                          <XAxis dataKey="bucket" tick={axis} tickLine={false} axisLine={false} />
-                          <YAxis allowDecimals={false} tick={axis} tickLine={false} axisLine={false} />
-                          <Tooltip cursor={{ fill: '#EEF1F6' }} content={<ChartTooltip hint="Select to open these applications" />} />
-                          <Bar dataKey="count" name="Open applications" radius={[5, 5, 0, 0]} isAnimationActive={!reduce} cursor="pointer"
-                            onClick={(x: { min_days: number; max_days: number | null }) => nav(r(`/app/applications?group=open&ageMin=${x.min_days}${x.max_days !== null ? `&ageMax=${x.max_days}` : ''}&sort=age`))}>
-                            {d.ageing.map((a) => <Cell key={a.bucket} fill={a.min_days >= 60 ? CHART.danger : a.min_days >= 30 ? CHART.warn : a.min_days >= 15 ? CHART.accent : CHART.primary} />)}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </div>
-              </Panel>
-
               <Panel className="xl:col-span-7" title="Officer workload" description="Open applications currently assigned. Select a reference to open that officer's applications.">
                 {!d.workload.length ? <EmptyState title="No assigned applications" /> : (
                   <ul className="divide-y divide-line">
@@ -167,62 +144,14 @@ export function AdminDashboard() {
                 )}
               </Panel>
 
-              <Panel className="xl:col-span-5" title="Expert visits (EVC)" description={`${d.evc_overdue} overdue for scheduling or outcome`}
-                action={<Link to="/app/evc" className="inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:underline">EVC overview<ArrowRight className="h-3.5 w-3.5" /></Link>}>
-                <div className="px-3 pb-4 pt-4">
-                  <div className="h-52" role="img" aria-label={`EVC: ${evcData.map((e) => `${e.name} ${e.count}`).join(', ')}`}>
-                    <ResponsiveContainer>
-                      <BarChart data={evcData} layout="vertical" margin={{ left: 40, right: 16 }} barCategoryGap="28%">
-                        <CartesianGrid horizontal={false} stroke={CHART.grid} />
-                        <XAxis type="number" allowDecimals={false} tick={axis} tickLine={false} axisLine={false} />
-                        <YAxis type="category" dataKey="name" tick={axis} width={120} tickLine={false} axisLine={false} />
-                        <Tooltip cursor={{ fill: '#EEF1F6' }} content={<ChartTooltip hint="Select to open this group" />} />
-                        <Bar dataKey="count" name="EVCs" radius={[0, 5, 5, 0]} isAnimationActive={!reduce} cursor="pointer"
-                          onClick={(x: { key: string }) => nav(`/app/evc?tab=${x.key === 'awaiting_scheduling' ? 'queue' : x.key === 'completed' ? 'done' : x.key}`)}>
-                          {evcData.map((e) => <Cell key={e.key} fill={e.key === 'awaiting_scheduling' ? CHART.warn : e.key === 'completed' ? CHART.primary : CHART.accent} />)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </Panel>
-
-              <Panel className="xl:col-span-4" title="Compliance obligations" action={<Link to="/app/compliance" className="text-[13px] font-medium text-accent hover:underline">All</Link>}>
-                <ul className="divide-y divide-line">
-                  {complianceKeys.map((k) => (
-                    <li key={k}>
-                      <Link to={`/app/compliance?status=${k}`} className="flex items-center justify-between px-5 py-2.5 hover:bg-surface-muted/70">
-                        <StatusBadge status={k} /><span className="text-[14px] font-semibold tabular text-ink">{d.compliance[k] ?? 0}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </Panel>
-
-              <Panel className="xl:col-span-3" title="Document validity" action={<Link to="/app/expiry" className="text-[13px] font-medium text-accent hover:underline">All</Link>}>
-                <ul className="divide-y divide-line">
-                  {['expired', 'expiring_soon', 'valid'].map((k) => (
-                    <li key={k}>
-                      <Link to={`/app/expiry?state=${k}`} className="flex items-center justify-between px-5 py-2.5 hover:bg-surface-muted/70">
-                        <StatusBadge status={k} /><span className="text-[14px] font-semibold tabular text-ink">{d.validity[k] ?? 0}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-                <div className="border-t border-line px-5 py-3">
-                  <p className="text-xs text-ink-soft">Overdue officer tasks: <span className="font-semibold text-ink tabular">{d.tasks_overdue}</span></p>
-                  <p className="mt-0.5 text-[11px] text-ink-faint">Tasks are worked by officers in their own workspace.</p>
-                </div>
-              </Panel>
-
-              <Panel className="xl:col-span-5" title="Latest open escalations" action={<Link to="/app/escalations?status=open" className="text-[13px] font-medium text-accent hover:underline">Escalations</Link>}>
+              <Panel className="xl:col-span-5" title="Latest escalations" description="One row per case." action={<Link to="/app/escalations?status=open" className="text-[13px] font-medium text-accent hover:underline">Escalations</Link>}>
                 {esc.isLoading ? <div className="space-y-2 p-5"><Skeleton className="h-4" /><Skeleton className="h-4" /></div> : !escalationsInScope.length ? <EmptyState title="No open escalations" /> : (
                   <ul className="divide-y divide-line">
                     {escalationsInScope.slice(0, 5).map((e) => (
                       <li key={e.id}>
                         <Link to={e.application_id ? `/app/applications/${e.application_id}` : '/app/escalations'} className="block px-5 py-3 hover:bg-surface-muted/70">
-                          <p className="text-[13px] font-medium text-ink">{e.summary}</p>
-                          <p className="mt-0.5 text-xs text-ink-soft">{e.rule_code} · notice {e.repeat_no} · {fmtDateTime(e.triggered_at)}</p>
+                          <p className="text-[13px] font-medium text-ink">{plainText(e.summary)}</p>
+                          <p className="mt-0.5 text-xs text-ink-soft">{codeLabel(e.rule_code)} · {plural(e.notice_count, 'notice')} · latest {fmtDateTime(e.latest_notice_at)}</p>
                         </Link>
                       </li>
                     ))}
@@ -230,24 +159,24 @@ export function AdminDashboard() {
                 )}
               </Panel>
 
-              {isNational && !region && d.by_region.length > 0 && (
-                <Panel className="xl:col-span-12" title="Open applications by region" description="Select a region to open its applications.">
-                  <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-5">
-                    {d.by_region.map((x) => (
-                      <Link key={x.region} to={`/app/applications?region=${x.region}&group=open`} className="rounded-xl border border-line px-4 py-3 transition-colors hover:border-line-strong hover:bg-surface-muted/60">
-                        <p className="text-xs text-ink-soft">Region {x.region}</p>
-                        <p className="mt-0.5 text-[22px] font-semibold tabular text-ink">{x.count}</p>
-                        <p className={`text-xs ${x.overdue ? 'font-medium text-danger' : 'text-ink-soft'}`}>{x.overdue} past target</p>
-                      </Link>
-                    ))}
-                  </div>
-                </Panel>
-              )}
             </div>
           )}
         </>
       )}
-      {can('audit') && <div className="mt-6"><AuditStream /></div>}
+      <Panel className="mt-6" title="More in your scope" description="Each opens its full page; nothing is hidden, only moved off the dashboard.">
+        <ul className="grid gap-px bg-line sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            ['Ageing of open applications', r('/app/applications?group=open&sort=age')],
+            ['Expert visits (EVC)', '/app/evc'],
+            ['Compliance obligations', '/app/compliance'],
+            ['Document validity', '/app/expiry'],
+            ['Applications by region', '/app/applications?group=open'],
+            ...(can('audit') ? [['Audit log and event stream', '/app/admin/audit']] : []),
+          ].map(([label, to]) => (
+            <li key={label} className="bg-surface"><Link to={to} className="flex items-center justify-between gap-2 px-5 py-3 text-[13px] font-medium text-accent hover:bg-surface-muted/70">{label}<span className="text-xs text-ink-soft">View all</span></Link></li>
+          ))}
+        </ul>
+      </Panel>
     </div>
   );
 }

@@ -1,13 +1,13 @@
 import { useState, type ReactNode } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion } from 'motion/react';
-import { ArrowLeft, KeyRound, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, ShieldAlert } from 'lucide-react';
 import { supabase, isConfigured } from '@/lib/supabase';
 import { Button, ButtonLink } from '@/components/ui/Button';
-import { SelectField, TextField } from '@/components/ui/Field';
+import { TextField } from '@/components/ui/Field';
 import { Notice } from '@/components/ui/States';
 import { Wordmark } from '@/components/layout/Wordmark';
 import { useAuth } from './AuthProvider';
@@ -52,11 +52,6 @@ async function startDemoSession(persona: string) {
   if (vErr) throw vErr;
 }
 
-/** The one shared demonstration login shown on the sign-in page. The chosen role decides which synthetic account opens. */
-const DEMO_EMAIL = 'demo123@gmail.com';
-const DEMO_PASSWORD = 'Demo@1234';
-const DEMO_ROLES: [persona: string, label: string][] = [['institution', 'College / institute'], ['officer', 'Officer'], ['admin', 'Administrative']];
-
 /** TEMPORARY open-demo entry: no credentials. The server function checks a database switch and mints a one-time token. */
 function DemoPicker() {
   const nav = useNavigate();
@@ -89,27 +84,24 @@ function DemoPicker() {
   );
 }
 
-const signInSchema = z.object({ email: z.string().email('Enter a valid email address.'), password: z.string().min(1, 'Enter your password.'), role: z.string() });
+const signInSchema = z.object({ email: z.string().email('Enter a valid email address.'), password: z.string().min(1, 'Enter your password.') });
 
 export function SignInPage() {
   const { status } = useAuth();
   const nav = useNavigate();
-  const loc = useLocation() as { state?: { from?: string } };
   const [err, setErr] = useState<string | null>(null);
+  const [show, setShow] = useState(false);
   const prefill = new URLSearchParams(window.location.search).get('email') ?? '';
-  const form = useForm<z.infer<typeof signInSchema>>({ resolver: zodResolver(signInSchema), defaultValues: { email: prefill || DEMO_EMAIL, password: prefill ? '' : DEMO_PASSWORD, role: DEMO_ROLES[0][0] } });
+  const form = useForm<z.infer<typeof signInSchema>>({ resolver: zodResolver(signInSchema), defaultValues: { email: prefill, password: '' } });
 
-  if (status === 'ready') return <Navigate to={loc.state?.from ?? '/app'} replace />;
+  // the role comes from the account itself; a sign-in never resumes a page remembered from another account or role
+  if (status === 'ready') return <Navigate to="/app" replace />;
 
   const onSubmit = form.handleSubmit(async (v) => {
     setErr(null);
-    if (v.email.trim().toLowerCase() === DEMO_EMAIL && v.password === DEMO_PASSWORD) {
-      try { await startDemoSession(v.role); nav(loc.state?.from ?? '/app', { replace: true }); } catch (e) { setErr(errorMessage(e)); }
-      return;
-    }
     const { error } = await supabase.auth.signInWithPassword({ email: v.email, password: v.password });
     if (error) setErr(error.message === 'Invalid login credentials' ? 'Email or password is incorrect.' : errorMessage(error));
-    else nav(loc.state?.from ?? '/app', { replace: true });
+    else nav('/app', { replace: true });
   });
 
   return (
@@ -117,18 +109,21 @@ export function SignInPage() {
       {!isConfigured ? <NotConfigured /> : OPEN_DEMO ? <DemoPicker /> : (
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           {err && <div role="alert"><Notice tone="danger">{err}</Notice></div>}
-          <TextField label="Email" type="email" autoComplete="username" required {...form.register('email')} error={form.formState.errors.email?.message} />
-          <TextField label="Password" type="password" autoComplete="current-password" required {...form.register('password')} error={form.formState.errors.password?.message} />
-          <SelectField label="Role" required {...form.register('role')}>
-            {DEMO_ROLES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
-          </SelectField>
+          <TextField label="Email" type="email" autoComplete="username" placeholder="name@institution.ac.in" required {...form.register('email')} error={form.formState.errors.email?.message} />
+          <div className="relative">
+            <TextField label="Password" type={show ? 'text' : 'password'} autoComplete="current-password" placeholder="Your password" required className="pr-11" {...form.register('password')} error={form.formState.errors.password?.message} />
+            <button type="button" onClick={() => setShow(!show)} aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show}
+              className="absolute right-1 top-[30px] flex h-9 w-9 items-center justify-center rounded-md text-ink-soft hover:bg-surface-muted hover:text-ink">
+              {show ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+            </button>
+          </div>
           <Button type="submit" className="w-full" loading={form.formState.isSubmitting}>Sign in</Button>
           <div className="flex justify-between text-[13px]">
             <Link to="/forgot-password" className="text-accent hover:underline">Forgot password?</Link>
             <Link to="/" className="text-ink-soft hover:text-ink">About this prototype</Link>
           </div>
           <p className="border-t border-line pt-4 text-xs leading-relaxed text-ink-soft">
-            The demonstration login is filled in for you: choose a role and sign in. Sessions expire after an hour of inactivity and refresh automatically while you work.
+            Your workspace follows your account: institutions, officers and administrators each land on their own dashboard. Sessions expire after an hour of inactivity and refresh automatically while you work.
           </p>
         </form>
       )}

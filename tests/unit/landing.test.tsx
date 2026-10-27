@@ -2,6 +2,26 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { LandingSnapshot } from '@/services/landing';
+
+// The preview reads the seeded figures from the database; here a fixture stands in for it.
+const SNAPSHOT: LandingSnapshot = {
+  generated_at: '2026-10-27T05:00:00Z',
+  totals: { applications: 13, in_process: 10, with_institution: 3, past_target: 5 },
+  cases: [
+    { reference: 'DEMO-WR-2026-01012', title: 'Extension of approval — computing capacity review (demo)', institution: 'Sahyadri College of Engineering (Demo)',
+      status: 'under_scrutiny', current_stage: 'scrutiny', next_action: 'Scrutinise the application',
+      stages: [{ code: 'intake', name: 'Intake', kind: 'intake', sequence: 1 }, { code: 'scrutiny', name: 'Scrutiny', kind: 'scrutiny', sequence: 2 }, { code: 'decision', name: 'Decision', kind: 'decision', sequence: 3 }] },
+    { reference: 'DEMO-WR-2026-01004', title: 'Extension of approval with additional division 2027-28', institution: 'Nirmala Institute of Technology (Demo)',
+      status: 'evc_required', current_stage: 'evc', next_action: 'Schedule the expert visit',
+      stages: [{ code: 'intake', name: 'Intake', kind: 'intake', sequence: 1 }, { code: 'scrutiny', name: 'Scrutiny', kind: 'scrutiny', sequence: 2 }, { code: 'evc', name: 'Expert Visit Committee (EVC)', kind: 'evc', sequence: 3 }, { code: 'decision', name: 'Decision', kind: 'decision', sequence: 4 }] },
+    { reference: 'DEMO-WR-2026-01003', title: 'Change of name to Nirmala Institute of Technology and Research', institution: 'Nirmala Institute of Technology (Demo)',
+      status: 'completed', current_stage: 'decision', next_action: null,
+      stages: [{ code: 'intake', name: 'Intake', kind: 'intake', sequence: 1 }, { code: 'scrutiny', name: 'Scrutiny', kind: 'scrutiny', sequence: 2 }, { code: 'decision', name: 'Decision', kind: 'decision', sequence: 3 }] },
+  ],
+};
+vi.mock('@/services/landing', () => ({ getLandingSnapshot: vi.fn(async () => SNAPSHOT) }));
+
 import { LandingPage } from '@/features/landing/LandingPage';
 
 const mediaListeners = new Set<(event: { matches: boolean }) => void>();
@@ -177,17 +197,18 @@ describe('landing page redesign', () => {
     expect(within(screen.getByRole('contentinfo')).getByText(/SIH26262 student prototype · Synthetic data · Not an official AICTE service/)).toBeTruthy();
   });
 
-  it('shows a labelled product preview built from the real UI whose stepper loops through the stages', () => {
-    vi.useFakeTimers();
+  it('shows the seeded figures and steps through real seeded cases only, the same every time', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     renderLanding();
     expect(screen.getByText('Live product preview — demo data')).toBeTruthy();
-    const current = () => document.querySelector('.lp-preview-card [aria-current="step"]')?.textContent ?? '';
-    const first = current();
-    expect(first).toMatch(/Scrutiny/);
-    const seen = new Set([first.match(/Intake|Scrutiny|Decision/)![0]]);
-    for (let i = 0; i < 3; i++) { act(() => { vi.advanceTimersByTime(3100); }); seen.add(current().match(/Intake|Scrutiny|Decision/)![0]); }
-    expect([...seen].sort()).toEqual(['Decision', 'Intake', 'Scrutiny']);
-    expect(document.querySelector('.lp-preview-card')?.textContent).toMatch(/Needs action/);
+    const card = () => document.querySelector('.lp-preview-card')?.textContent ?? '';
+    await screen.findByText('DEMO-WR-2026-01012', { selector: '.lp-reference' });
+    expect(card()).toMatch(/Applications13/);
+    expect(card()).toMatch(/With institution3/);
+    expect(card()).toMatch(/Past target5/);
+    const refs = new Set<string>();
+    for (let i = 0; i < 4; i++) { refs.add(document.querySelector('.lp-reference')!.textContent!); act(() => { vi.advanceTimersByTime(3100); }); }
+    expect([...refs].sort()).toEqual(['DEMO-WR-2026-01003', 'DEMO-WR-2026-01004', 'DEMO-WR-2026-01012']);
   });
 
   it('lifts and tilts the preview toward the pointer, and leaves it still with reduced motion', () => {
@@ -227,7 +248,7 @@ describe('landing page redesign', () => {
     renderLanding();
     const nav = screen.getByRole('navigation', { name: 'Application journey stages' });
     for (const [name, line] of [['Submission', 'The institution files its documents online.'], ['Scrutiny', 'Officers check the file against the rules.'],
-      ['Correction', 'The institution answers within 48 hours.'], ['Expert visit', 'An expert panel inspects the campus online.'], ['Decision', 'An authorised officer records the outcome.']]) {
+      ['Correction', 'Queries in 48 hours; corrections by their due date.'], ['Expert visit', 'An expert panel inspects the campus online.'], ['Decision', 'An authorised officer records the outcome.']]) {
       expect(within(nav).getByText(line)).toBeTruthy();
       fireEvent.click(stageButton(name));
       expect(screen.getByText(`In plain English: ${line}`)).toBeTruthy();
@@ -256,15 +277,21 @@ describe('landing page redesign', () => {
     expect(demo.getByText(/issued by the project team/)).toBeTruthy();
   });
 
-  it('shows copyable credentials only when the project publishes them through its public environment', () => {
+  it('shows the published demo sign-in email but never a password', () => {
     vi.stubEnv('VITE_PUBLIC_DEMO_EMAIL', 'visitor@example.test');
     vi.stubEnv('VITE_PUBLIC_DEMO_PASSWORD', 'published-demo-pass');
     renderLanding();
     const demo = within(document.getElementById('demo')!);
     expect(demo.getByText('visitor@example.test')).toBeTruthy();
     expect(demo.getByRole('button', { name: 'Copy email' })).toBeTruthy();
-    expect(demo.getByRole('button', { name: 'Copy password' })).toBeTruthy();
+    expect(demo.queryByRole('button', { name: 'Copy password' })).toBeNull();
+    expect(document.body.textContent).not.toContain('published-demo-pass');
     vi.unstubAllEnvs();
+  });
+
+  it('explains both correction windows without implying every correction is 48 hours', () => {
+    renderLanding();
+    expect(screen.getByText(/Officer queries are answered within 48 hours; deficiency corrections are due by the date on each item \(typically 7 days\)/)).toBeTruthy();
   });
 
   it('closes with the full name of AICASA and real footer links', () => {
@@ -274,18 +301,20 @@ describe('landing page redesign', () => {
     const nav = footer.getByRole('navigation', { name: 'Footer navigation' });
     expect(within(nav).getByRole('link', { name: 'How it works' }).getAttribute('href')).toMatch(/#how-it-works$/);
     expect(within(nav).getByRole('link', { name: 'Features' }).getAttribute('href')).toMatch(/#features$/);
-    expect(within(nav).getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe('/sign-in');
+    expect(within(nav).getByRole('link', { name: 'Demo access' }).getAttribute('href')).toMatch(/#demo$/);
+    expect(within(nav).queryByRole('link', { name: 'Sign in' })).toBeNull(); // the demo block is the single bottom call to action
     expect(document.getElementById('how-it-works')).toBeTruthy();
     expect(document.getElementById('features')).toBeTruthy();
   });
 
-  it('is fully readable with reduced motion: nothing is hidden for a reveal and no auto-play controls appear', () => {
+  it('is fully readable with reduced motion: nothing is hidden for a reveal and no auto-play controls appear', async () => {
     reducedMotion = true;
     const { container } = renderLanding();
     expect(container.querySelector('.will-reveal')).toBeNull();
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBeGreaterThanOrEqual(4);
     expect(screen.queryByRole('button', { name: /application journey/i })).toBeNull();
+    await screen.findByText('DEMO-WR-2026-01012', { selector: '.lp-reference' });
     expect(document.querySelector('.lp-preview-card [aria-current="step"]')?.textContent).toMatch(/Scrutiny/);
   });
 });

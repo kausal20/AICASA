@@ -7,7 +7,14 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Notice } from '@/components/ui/States';
 import { errorMessage } from '@/lib/errors';
-import { fmtDateTime } from '@/lib/format';
+import { fmtDateTime, humanize, plainText, plural } from '@/lib/format';
+
+/** "8 passed · 2 to review": the results summary above the detailed list. */
+export function summaryLine(findings: Pick<CheckFinding, 'outcome'>[]): string {
+  const passed = findings.filter((f) => f.outcome === 'passed').length;
+  const review = findings.length - passed;
+  return review ? `${plural(passed, 'check')} passed · ${review} to review` : `${plural(passed, 'check')} passed · nothing to review`;
+}
 import type { CheckFinding, CheckRun, FindingOutcome } from '@/types/domain';
 
 const ORDER: FindingOutcome[] = ['potential_issue', 'missing_information', 'extraction_failed', 'manual_review', 'not_checked', 'passed'];
@@ -21,6 +28,7 @@ export function FindingsList({ run }: { run: CheckRun }) {
   const groups = ORDER.map((o) => ({ outcome: o, items: findings.filter((f) => f.outcome === o) })).filter((g) => g.items.length);
   return (
     <div className="space-y-4">
+      <p className="text-[13.5px] font-semibold text-ink">{summaryLine(findings)}</p>
       <div className="flex flex-wrap gap-1.5">
         {groups.map((g) => <StatusBadge key={g.outcome} status={g.outcome} label={`${GROUP_LABEL[g.outcome]}: ${g.items.length}`} />)}
       </div>
@@ -35,7 +43,7 @@ export function FindingsList({ run }: { run: CheckRun }) {
       <div className="rounded-lg bg-surface-muted px-4 py-3 text-xs leading-relaxed text-ink-soft">
         <p className="mb-1 font-medium text-ink">What this check does not do</p>
         <ul className="list-disc space-y-0.5 pl-4">{run.limitations.map((l) => <li key={l}>{l}</li>)}</ul>
-        <p className="mt-2">Engine {run.engine} · checklist v{run.checklist_version ?? '—'} · extraction {run.extraction_status.replace('_', ' ')}{run.extraction_method ? ` (${run.extraction_method})` : ''} · {fmtDateTime(run.completed_at ?? run.started_at)}</p>
+        <p className="mt-2">Engine {run.engine} · checklist v{run.checklist_version ?? '—'} · extraction {humanize(run.extraction_status).toLowerCase()}{run.extraction_method ? ` (${run.extraction_method})` : ''} · {fmtDateTime(run.completed_at ?? run.started_at)}</p>
       </div>
     </div>
   );
@@ -48,15 +56,14 @@ function FindingItem({ f }: { f: CheckFinding }) {
         <p className="text-[13px] font-medium text-ink">{f.check_name}</p>
         <StatusBadge status={f.outcome} />
       </div>
-      <p className="mt-1 text-[13px] text-ink-soft">{f.explanation}</p>
+      <p className="mt-1 text-[13px] text-ink-soft">{plainText(f.explanation)}</p>
       {(f.evidence || f.confidence !== null) && (
         <p className="mt-1.5 text-xs text-ink-soft">
-          {f.evidence && <>Evidence: <span className="rounded bg-surface-muted px-1.5 py-0.5 text-ink">{f.evidence}</span></>}
+          {f.evidence && <>Evidence: <span className="rounded bg-surface-muted px-1.5 py-0.5 text-ink">{plainText(f.evidence)}</span></>}
           {f.confidence !== null && <span className="ml-2">Readable-text ratio (heuristic): {(f.confidence * 100).toFixed(0)}%</span>}
         </p>
       )}
       {f.suggestion && <p className="mt-1.5 text-xs font-medium text-accent">Suggested action: {f.suggestion}</p>}
-      <p className="mt-1 text-[11px] text-ink-faint">Rule: {f.check_code}</p>
     </li>
   );
 }

@@ -77,9 +77,12 @@ export function DocumentCentrePage() {
 export function PrecheckPage() {
   const { institution } = useAuth();
   const docs = useQuery({ queryKey: ['documents', 'inst', institution?.id], queryFn: () => listDocuments({ institutionId: institution!.id }), enabled: !!institution });
+  const [docId, setDocId] = useState('');
   const [sel, setSel] = useState('');
-  const versions = (docs.data ?? []).flatMap((d) => (d.document_versions ?? []).map((v) => ({ v, d })));
-  const chosen = versions.find((x) => x.v.id === sel) ?? versions.find((x) => x.v.version === x.d.current_version);
+  const list = (docs.data ?? []).filter((d) => (d.document_versions ?? []).length > 0);
+  const doc = list.find((d) => d.id === docId) ?? list[0];
+  const versions = (doc?.document_versions ?? []).map((v) => ({ v, d: doc! }));
+  const chosen = versions.find((x) => x.v.id === sel) ?? versions.find((x) => x.v.version === x.d.current_version) ?? versions[0];
   return (
     <div>
       <PageHeader title="Pre-submission document check"
@@ -90,17 +93,18 @@ export function PrecheckPage() {
       <Card className="mt-5">
         <CardHeader title="Document" />
         <CardBody className="space-y-5">
-          {docs.isLoading ? <LoadingRows rows={2} /> : !versions.length ? (
+          {docs.isLoading ? <LoadingRows rows={2} /> : !list.length ? (
             <EmptyState title="No uploaded documents" body="Upload documents in an application draft or the document centre first." />
           ) : (
             <>
-              <SelectField label="Document version" required value={chosen?.v.id ?? ''} onChange={(e) => setSel(e.target.value)}>
-                {(docs.data ?? []).map((d) => (
-                  <optgroup key={d.id} label={d.title}>
-                    {(d.document_versions ?? []).map((v) => <option key={v.id} value={v.id}>{d.title} — v{v.version} {v.file_name}{v.version === d.current_version ? ' (current)' : ''}</option>)}
-                  </optgroup>
-                ))}
-              </SelectField>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <SelectField label="Document" required value={doc?.id ?? ''} onChange={(e) => { setDocId(e.target.value); setSel(''); }}>
+                  {list.map((d) => <option key={d.id} value={d.id}>{d.title} · {d.applications?.reference ?? 'Institution record'}</option>)}
+                </SelectField>
+                <SelectField label="Version" required value={chosen?.v.id ?? ''} onChange={(e) => setSel(e.target.value)}>
+                  {versions.map(({ v, d }) => <option key={v.id} value={v.id}>Version {v.version} · {v.file_name}{v.version === d.current_version ? ' (current)' : ''}</option>)}
+                </SelectField>
+              </div>
               {chosen && <PrecheckPanel key={chosen.v.id} versionId={chosen.v.id} fileLabel={`${chosen.d.title} · v${chosen.v.version}`} />}
             </>
           )}

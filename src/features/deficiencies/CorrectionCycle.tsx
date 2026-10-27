@@ -1,103 +1,105 @@
 import { useState } from 'react';
-import { AlertOctagon, FileUp, Timer } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { AlertOctagon, FileUp, Send } from 'lucide-react';
 import type { Deficiency, DocumentVersion } from '@/types/domain';
 import { Button } from '@/components/ui/Button';
-import { TextAreaField } from '@/components/ui/Field';
+import { SelectField, TextAreaField } from '@/components/ui/Field';
 import { Notice } from '@/components/ui/States';
 import { DocumentUploader } from '@/features/documents/DocumentUploader';
 import { useAction } from '@/hooks/useAction';
 import { submitCorrection } from '@/services/operations';
-import { cn } from '@/lib/cn';
-import { formatRemaining } from '@/lib/queryWindow';
-import { fmtDateTime, humanize } from '@/lib/format';
-import { useNow, useQueryWindow } from './QueryWindow';
+import { getRequirements } from '@/services/applications';
+import { fmtDateTime, humanize, plainText } from '@/lib/format';
+import { useQueryWindow } from './QueryWindow';
 
 /** Query number shown to the institution, derived from the deficiency id so it is stable across sessions. */
 export function memoNumber(id: string): string {
   return `RO-${1000 + (parseInt(id.replace(/-/g, '').slice(0, 4), 16) % 9000)}`;
 }
 
+const SUPPORTING = 'supporting_evidence';
+
 /**
- * Query & Clarification, institution side. Left: the officer's query. Right: the clarification (upload and response).
- * The response window comes from the server; once it has closed the upload and the submit button are disabled
- * (the server refuses them as well) until an officer reopens the window.
+ * Query & Clarification, institution side: the officer's query, then the answer — a reply, a corrected document (saved as a
+ * new version, visible in the Document Centre and in Version Compare), and "Submit for re-review". The server re-checks
+ * everything, including the response window, which disables the controls once it has closed.
  */
 export function CorrectionCycle({ d, institutionId }: { d: Deficiency; institutionId: string }) {
   const memo = memoNumber(d.id);
   const win = useQueryWindow(d);
-  const now = useNow();
-  // queries raised before the window existed keep their plain deadline
-  const legacyMs = !d.window_closes_at && d.due_at ? new Date(d.due_at).getTime() - now : null;
   const expired = win?.closed ?? false;
-  const remainingMs = win?.remainingMs ?? legacyMs;
-
+  const reqs = useQuery({
+    queryKey: ['requirements', d.applications?.application_type_code, d.applications?.checklist_version],
+    queryFn: () => getRequirements(d.applications!.application_type_code!, d.applications!.checklist_version!),
+    enabled: !d.doc_type && !!d.applications?.application_type_code && d.applications?.checklist_version != null,
+  });
   const [text, setText] = useState('');
+  const [docType, setDocType] = useState(d.doc_type ?? '');
   const [version, setVersion] = useState<DocumentVersion | null>(null);
   const act = useAction(() => submitCorrection(d.id, text, version?.id ?? null), {
-    success: 'Clarification submitted. The officer has been notified.', invalidate: [['deficiencies'], ['application'], ['applications'], ['matrix'], ['documents']],
+    success: 'Submitted for re-review. The officer has been notified.', invalidate: [['deficiencies'], ['application'], ['applications'], ['matrix'], ['documents'], ['navcounts'], ['notifications']],
     onSuccess: () => { setText(''); setVersion(null); },
   });
+  const reply = text.trim();
+  const replyOk = reply.length >= 10;
+  const ready = d.doc_type ? !!version && (reply.length === 0 || replyOk) : (replyOk || (!!version && reply.length === 0));
 
   return (
-    <div className="border-t border-line">
-      {remainingMs !== null && (
-        <div role="timer" aria-live="off"
-          className={cn('flex flex-wrap items-center gap-2 px-5 py-2.5 text-[13px] font-semibold',
-            remainingMs <= 0 ? 'bg-danger-soft text-danger' : remainingMs < 12 * 3_600_000 ? 'bg-warning-soft text-[#7a5100]' : 'bg-primary-soft text-primary-ink')}>
-          <Timer className="h-4 w-4 shrink-0" aria-hidden />
-          {remainingMs <= 0 ? <>Response window expired</> : <>Response window: <span className="tabular">{formatRemaining(remainingMs)}</span></>}
-          <span className="font-normal opacity-80">· {d.window_closes_at ? 'closes' : 'deadline'} {fmtDateTime(d.window_closes_at ?? d.due_at)}</span>
-          {d.window_reopen_count > 0 && <span className="font-normal opacity-80">· reopened {d.window_reopen_count}×</span>}
+    <div className="grid border-t border-line md:grid-cols-2 md:divide-x md:divide-line">
+      <section aria-label={`Query #${memo}`} className="min-w-0 bg-danger-soft/40 px-5 py-4">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-danger">
+          <AlertOctagon className="h-3.5 w-3.5" aria-hidden />Query #{memo}
+        </p>
+        <div className="mt-2 rounded-lg border border-[#f3c9c4] bg-surface px-4 py-3">
+          <p className="text-[13.5px] font-semibold text-danger">{plainText(d.reason)}</p>
+          <dl className="mt-3 space-y-2 text-[13px]">
+            <div><dt className="text-xs text-ink-soft">Clarification or correction requested</dt><dd className="font-medium">{d.requested_correction}</dd></div>
+            <div><dt className="text-xs text-ink-soft">Sent to you</dt><dd>{fmtDateTime(d.sent_at ?? d.raised_at)} · stage {humanize(d.stage_code)}</dd></div>
+          </dl>
         </div>
-      )}
+      </section>
 
-      <div className="grid md:grid-cols-2 md:divide-x md:divide-line">
-        <section aria-label={`Query #${memo}`} className="min-w-0 bg-danger-soft/40 px-5 py-4">
-          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-danger">
-            <AlertOctagon className="h-3.5 w-3.5" aria-hidden />Query
-          </p>
-          <div className="mt-2 rounded-lg border border-[#f3c9c4] bg-surface px-4 py-3">
-            <p className="text-[13.5px] font-semibold text-danger">Query #{memo}: {d.reason}</p>
-            <dl className="mt-3 space-y-2 text-[13px]">
-              <div><dt className="text-xs text-ink-soft">Requirement / source</dt><dd>{d.requirement_source}</dd></div>
-              <div><dt className="text-xs text-ink-soft">Clarification or correction requested</dt><dd className="font-medium">{d.requested_correction}</dd></div>
-              <div><dt className="text-xs text-ink-soft">Raised</dt><dd>{fmtDateTime(d.raised_at)} · stage {humanize(d.stage_code)}</dd></div>
-            </dl>
+      <section aria-label={`Answer to Query #${memo}`} className="min-w-0 px-5 py-4">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
+          <FileUp className="h-3.5 w-3.5" aria-hidden />Your answer
+        </p>
+        {expired ? (
+          <div className="mt-2">
+            <Notice tone="danger" title="Window expired">
+              The response window for this query has closed, so uploads and replies are disabled. Contact the officer: they can reopen the window once.
+            </Notice>
           </div>
-        </section>
-
-        <section aria-label={`Clarification for Query #${memo}`} className="min-w-0 px-5 py-4">
-          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
-            <FileUp className="h-3.5 w-3.5" aria-hidden />Clarify and upload for Query #{memo}
-          </p>
-          {expired ? (
-            <div className="mt-2 space-y-3">
-              <Notice tone="danger" title="Window expired">
-                The response window for this query has closed, so uploads and clarifications are disabled. Contact the officer: they can reopen the window once.
-              </Notice>
-            </div>
-          ) : (
-            <div className="mt-2 space-y-3">
-              {d.doc_type ? (
-                <>
-                  <DocumentUploader institutionId={institutionId} applicationId={d.application_id} docType={d.doc_type} requireReason onUploaded={setVersion} />
-                  <p className="text-xs text-ink-soft">
-                    {version ? `Version ${version.version} uploaded and attached.` : 'A new version of this document is required before you can submit.'}
-                    {' '}Earlier versions stay on file and are compared by the officer.
-                  </p>
-                </>
-              ) : (
-                <p className="rounded-lg border border-dashed border-line-strong px-4 py-3 text-[13px] text-ink-soft">This query asks for a written clarification; no replacement document type is attached.</p>
+        ) : (
+          <div className="mt-2 space-y-3">
+            <TextAreaField label="Reply" rows={3} value={text} onChange={(e) => setText(e.target.value)}
+              hint={d.doc_type ? 'Optional with the corrected document; at least 10 characters if you write one.' : 'Explain the correction (at least 10 characters), or upload a corrected document below.'} />
+            <div className="rounded-lg border border-line px-3 py-3">
+              <p className="mb-2 text-[13px] font-medium">Upload corrected document</p>
+              {!d.doc_type && (
+                <SelectField label="Document" value={docType} onChange={(e) => { setDocType(e.target.value); setVersion(null); }}>
+                  <option value="">Choose the document you are correcting…</option>
+                  {(reqs.data ?? []).map((r) => <option key={r.doc_type} value={r.doc_type}>{r.name}</option>)}
+                  <option value={SUPPORTING}>Other supporting evidence</option>
+                </SelectField>
               )}
-              <TextAreaField label="Your clarification" required rows={3} value={text} onChange={(e) => setText(e.target.value)}
-                hint="Uploading a file alone does not resolve the query; the officer reviews your clarification." />
-              <div className="flex justify-end">
-                <Button size="sm" loading={act.isPending} disabled={text.trim().length < 10 || (!!d.doc_type && !version)} onClick={() => act.mutate(undefined)}>Submit clarification</Button>
-              </div>
+              {docType ? (
+                <div className={d.doc_type ? '' : 'mt-3'}>
+                  <DocumentUploader key={docType} institutionId={institutionId} applicationId={d.application_id} docType={docType}
+                    title={docType === SUPPORTING ? 'Supporting evidence' : undefined} requireReason onUploaded={setVersion} compact />
+                  <p className="mt-2 text-xs text-ink-soft">
+                    {version ? `Version ${version.version} uploaded and attached to this answer.` : d.doc_type ? 'This query needs a new version of this document.' : 'Optional.'}
+                    {' '}Earlier versions stay on file; the officer compares them.
+                  </p>
+                </div>
+              ) : <p className="mt-2 text-xs text-ink-soft">Optional for this query.</p>}
             </div>
-          )}
-        </section>
-      </div>
+            <div className="flex items-center justify-end gap-3">
+              {!ready && <p className="text-xs text-ink-soft">{d.doc_type ? 'Upload the corrected document to submit.' : 'Write a reply or upload a document to submit.'}</p>}
+              <Button size="sm" icon={<Send className="h-3.5 w-3.5" />} loading={act.isPending} disabled={!ready} onClick={() => act.mutate(undefined)}>Submit for re-review</Button>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -9,7 +9,8 @@ import {
   recordEvcAvailability, scheduleEvc, withdrawEvcAvailability, withdrawEvcConflict,
 } from '@/services/operations';
 import { listInstitutions } from '@/services/admin';
-import { declareExpertConflict, listEvcReports, listExperts } from '@/services/experts';
+import { assignEvcExpert, declareExpertConflict, listEvcReports, listExperts, setEvcPanelChair } from '@/services/experts';
+import { ExpertPicker, type PanelPick } from './RecommendPanel';
 import { EvcCheckView } from './EvcChecks';
 import { getDirectory } from '@/services/applications';
 import { Card } from '@/components/ui/Card';
@@ -20,7 +21,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { EmptyState, ErrorState, LoadingRows, Notice } from '@/components/ui/States';
 import { useAction } from '@/hooks/useAction';
-import { fmtDateTime, localDateTimeToIso, humanize } from '@/lib/format';
+import { fmtDateTime, localDateTimeToIso, humanize, plural } from '@/lib/format';
 import type { EvcRow } from '@/types/domain';
 
 const GROUPS: Record<string, string[]> = {
@@ -48,14 +49,14 @@ export function EvcPage() {
         actions={<ButtonLink to="/app/evc/experts" variant="secondary" icon={<Users className="h-4 w-4" />}>Experts</ButtonLink>}
         description="Applications enter this queue only when their configured route reaches an expert-visit stage and its prerequisites are met. Scheduling here is internal; no external calendar is connected." />
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Awaiting scheduling" value={count('queue')} tone={count('queue') ? 'warning' : 'neutral'} />
-        <Stat label="Proposed" value={count('proposed')} />
-        <Stat label="Scheduled" value={count('scheduled')} />
-        <Stat label="Overdue" value={rows.filter((r) => r.is_overdue).length} tone={rows.some((r) => r.is_overdue) ? 'danger' : 'neutral'} hint="Past scheduling target or outcome not recorded" />
+        <Stat label="Awaiting scheduling" value={q.isLoading ? '…' : count('queue')} tone={count('queue') ? 'warning' : 'neutral'} />
+        <Stat label="Proposed" value={q.isLoading ? '…' : count('proposed')} />
+        <Stat label="Scheduled" value={q.isLoading ? '…' : count('scheduled')} />
+        <Stat label="Overdue" value={q.isLoading ? '…' : rows.filter((r) => r.is_overdue).length} tone={rows.some((r) => r.is_overdue) ? 'danger' : 'neutral'} hint="Past scheduling target or outcome not recorded" />
       </div>
       <Tabs value={tab} onValueChange={setTab} tabs={[
-        { value: 'queue', label: `Queue (${count('queue')})` }, { value: 'proposed', label: `Proposed (${count('proposed')})` },
-        { value: 'scheduled', label: `Scheduled (${count('scheduled')})` }, { value: 'done', label: `History (${count('done')})` },
+        { value: 'queue', label: `Queue (${q.isLoading ? '…' : count('queue')})` }, { value: 'proposed', label: `Proposed (${q.isLoading ? '…' : count('proposed')})` },
+        { value: 'scheduled', label: `Scheduled (${q.isLoading ? '…' : count('scheduled')})` }, { value: 'done', label: `History (${q.isLoading ? '…' : count('done')})` },
         { value: 'availability', label: 'Availability & conflicts' },
       ]}>
         {tab === 'availability' ? <AvailabilityTab /> : <Card>
@@ -72,12 +73,12 @@ export function EvcPage() {
                     <Td><StatusBadge status={r.status} />{r.is_overdue && <p className="mt-1 flex items-center gap-1 text-xs text-danger"><AlertTriangle className="h-3 w-3" />Overdue</p>}
                       {r.outcome && <p className="mt-1 text-xs text-ink-soft">{humanize(r.outcome)}</p>}
                       {['scheduled', 'completed'].includes(r.status) && (reportCount(r.id) > 0
-                        ? <p className="mt-1 flex items-center gap-1 text-xs text-success"><MapPin className="h-3 w-3" aria-hidden />{reportCount(r.id)} geo-tagged report{reportCount(r.id) > 1 ? 's' : ''}</p>
+                        ? <p className="mt-1 flex items-center gap-1 text-xs text-success"><MapPin className="h-3 w-3" aria-hidden />{plural(reportCount(r.id), 'geo-tagged report')}</p>
                         : r.status === 'scheduled' && <p className="mt-1 text-xs text-ink-soft">No report uploaded</p>)}</Td>
                     <Td>{r.status === 'awaiting_scheduling' ? <DueBadge due={r.schedule_due_at} /> : r.scheduled_start ? <span className="text-[13px] tabular">{fmtDateTime(r.scheduled_start)}</span> : '—'}
                       {r.reschedule_count > 0 && <p className="text-xs text-ink-soft">Rescheduled {r.reschedule_count}×</p>}</Td>
-                    <Td className="text-[13px]">{r.coordinator_name ?? '—'}</Td>
-                    <Td className="text-right tabular text-[13px] text-ink-soft">{r.age_days}d</Td>
+                    <Td className="text-[13px]">{r.coordinator_name ?? '—'}<PanelNames panel={r.panel} /></Td>
+                    <Td className="text-right tabular text-[13px] text-ink-soft">{plural(r.age_days, 'day')}</Td>
                     <Td className="text-right">
                       {canAct && (
                         <div className="flex justify-end gap-1.5">
@@ -116,6 +117,7 @@ function ScheduleDialog({ row, onClose }: { row: EvcRow; onClose: () => void }) 
   const [start, setStart] = useState(toLocalInput(row.scheduled_start));
   const [end, setEnd] = useState(toLocalInput(row.scheduled_end));
   const [people, setPeople] = useState<string[]>([]);
+  const [panel, setPanel] = useState<PanelPick>({ experts: [], chair: null });
   const [confirm, setConfirm] = useState(true);
   const [notes, setNotes] = useState(row.notes ?? '');
   const [reason, setReason] = useState('');
@@ -129,16 +131,22 @@ function ScheduleDialog({ row, onClose }: { row: EvcRow; onClose: () => void }) 
   });
   const hardBlock = !!check.data?.blocked && !check.data?.needs_override;
   const needsOverride = !!check.data?.needs_override;
-  const act = useAction(() => scheduleEvc({ evcId: row.id, start: localDateTimeToIso(start), end: localDateTimeToIso(end), participants: people, confirm, notes,
-    version: row.row_version, reason: reason || undefined, override: needsOverride ? override : undefined }), {
-    invalidate: [['evc'], ['application'], ['applications'], ['tasks'], ['evc-check']],
+  const act = useAction(async () => {
+    // the chosen experts join the panel first (the server re-checks every exclusion), then the chair, then the session
+    const onPanel = new Set((row.panel ?? []).map((x) => x.expert_id));
+    for (const id of panel.experts) if (!onPanel.has(id)) await assignEvcExpert(row.id, id, row.row_version);
+    if (panel.chair) await setEvcPanelChair(row.id, panel.chair);
+    return scheduleEvc({ evcId: row.id, start: localDateTimeToIso(start), end: localDateTimeToIso(end), participants: people, confirm, notes,
+      version: row.row_version, reason: reason || undefined, override: needsOverride ? override : undefined });
+  }, {
+    invalidate: [['evc'], ['application'], ['applications'], ['tasks'], ['evc-check'], ['evc-panel'], ['expert-match']],
     onSuccess: (r) => {
       toast.success(r.override ? 'Saved with a recorded override. The reason is in the EVC history and audit log.'
         : confirm ? 'EVC scheduled. Institution and panel notified in-app.' : 'EVC proposed.');
       onClose();
     },
   });
-  const canSave = slotOk && !hardBlock && (!resched || reason.trim().length >= 10) && (!needsOverride || override.trim().length >= 10) && !check.isFetching;
+  const canSave = slotOk && !!panel.chair && panel.experts.length > 0 && !hardBlock && (!resched || reason.trim().length >= 10) && (!needsOverride || override.trim().length >= 10) && !check.isFetching;
   return (
     <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title={resched ? 'Reschedule EVC' : 'Schedule EVC'} description={`${row.reference} · ${row.institution_name}`}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -147,7 +155,11 @@ function ScheduleDialog({ row, onClose }: { row: EvcRow; onClose: () => void }) 
         <TextField label="Start (IST)" type="datetime-local" required value={start} onChange={(e) => setStart(e.target.value)} />
         <TextField label="End (IST)" type="datetime-local" required value={end} onChange={(e) => setEnd(e.target.value)} />
         <fieldset className="sm:col-span-2">
-          <legend className="mb-1.5 text-[13px] font-medium">Panel members <span className="text-xs font-normal text-ink-faint">optional · you are the coordinator</span></legend>
+          <legend className="mb-1.5 text-[13px] font-medium">Expert panel <span className="text-danger">*</span> <span className="text-xs font-normal text-ink-faint">ranked by the Recommend panel; excluded experts cannot be chosen</span></legend>
+          <ExpertPicker evcId={row.id} value={panel} onChange={setPanel} />
+        </fieldset>
+        <fieldset className="sm:col-span-2">
+          <legend className="mb-1.5 text-[13px] font-medium">AICTE officers joining <span className="text-xs font-normal text-ink-faint">optional · you are the coordinator</span></legend>
           {!eligible.length ? <p className="text-xs text-ink-soft">No other EVC officers in this region.</p> : (
             <div className="flex flex-wrap gap-2">
               {eligible.map((id) => {
@@ -291,6 +303,7 @@ function CompleteDialog({ row, onClose }: { row: EvcRow; onClose: () => void }) 
     <Dialog open onOpenChange={(o) => !o && onClose()} title="Record EVC outcome" description={`${row.reference} · held ${fmtDateTime(row.scheduled_start)}`}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={act.isPending} disabled={summary.trim().length < 20} onClick={() => act.mutate(undefined)}>Record outcome</Button></>}>
       <div className="space-y-4">
+        <div className="rounded-lg bg-surface-muted px-3 py-2 text-[13px]"><p className="text-xs text-ink-soft">Session {fmtDateTime(row.scheduled_start)}</p><PanelNames panel={row.panel} /></div>
         <SelectField label="Authorised outcome" required value={outcome} onChange={(e) => setOutcome(e.target.value as typeof outcome)}>
           <option value="satisfactory">Satisfactory</option>
           <option value="deficiencies_noted">Deficiencies noted</option>
@@ -311,4 +324,10 @@ function CancelDialog({ row, onClose }: { row: EvcRow; onClose: () => void }) {
       <TextAreaField label="Cancellation reason" required rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
     </Dialog>
   );
+}
+
+/** The expert panel of an EVC, chair first, as recorded in the database (same names on every screen). */
+export function PanelNames({ panel }: { panel?: { expert_id: string; full_name: string; is_chair: boolean }[] }) {
+  if (!panel?.length) return <p className="mt-0.5 text-xs text-ink-soft">No expert panel recorded</p>;
+  return <p className="mt-0.5 text-xs text-ink-soft">Panel: {panel.map((p) => `${p.full_name}${p.is_chair ? ' (chair)' : ''}`).join(', ')}</p>;
 }

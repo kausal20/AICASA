@@ -13,6 +13,7 @@ import { Link000 } from '@/components/ui/skiper-ui/skiper40';
 import { WorkflowTracker } from '@/features/applications/WorkflowTracker';
 import { cn } from '@/lib/cn';
 import type { StageHistory, WorkflowStage } from '@/types/domain';
+import { getLandingSnapshot, type LandingCase, type LandingSnapshot } from '@/services/landing';
 import './landing.css';
 
 const JOURNEY_INTERVAL = 4000;
@@ -22,7 +23,7 @@ const PREVIEW_INTERVAL = 3000;
 const JOURNEY = [
   { name: 'Submission', plain: 'The institution files its documents online.', mobile: 'Submit', owner: 'Institution', title: 'One complete application. One starting point.', detail: 'Every required document comes together in a single record. The institution submits it, and the review can begin.', status: 'Submitted', tone: 'accent' as const, evidence: 'Documents attached. Reference recorded.', icon: FileCheck2 },
   { name: 'Scrutiny', plain: 'Officers check the file against the rules.', mobile: 'Review', owner: 'Scrutiny Committee', title: 'Spot the gap before it becomes a delay.', detail: 'Scrutiny means careful checking. The system compares the application with the handbook rules and flags a shortfall in computer capacity; the officer then raises a clear query, a written question to the institution.', status: 'Issue found', tone: 'warning' as const, evidence: 'Demo requirement: 120. Declared: 95.', icon: ScanSearch },
-  { name: 'Correction', plain: 'The institution answers within 48 hours.', mobile: 'Correct', owner: 'Institution → officer', title: 'A correction, with the history intact.', detail: 'The institution sends revised evidence inside the response window. The officer sees exactly what changed, with the earlier version still on record.', status: 'Clarification sent', tone: 'accent' as const, evidence: 'Version 2 received. Version 1 preserved.', icon: GitCompareArrows },
+  { name: 'Correction', plain: 'Queries in 48 hours; corrections by their due date.', mobile: 'Correct', owner: 'Institution → officer', title: 'A correction, with the history intact.', detail: 'The institution answers an officer query within 48 hours, or a deficiency correction by the due date shown on it. The officer sees exactly what changed, with the earlier version still on record.', status: 'Clarification sent', tone: 'accent' as const, evidence: 'Version 2 received. Version 1 preserved.', icon: GitCompareArrows },
   { name: 'Expert visit', plain: 'An expert panel inspects the campus online.', mobile: 'Visit', owner: 'Visit coordinator', title: 'The right expertise, with conflicts checked.', detail: 'Where an Expert Visit Committee (EVC) is required, the coordinator checks each expert’s specialisation, conflicts of interest and availability before scheduling the visit.', status: 'Panel checked', tone: 'primary' as const, evidence: 'Eligibility checked before assignment.', icon: Users },
   { name: 'Decision', plain: 'An authorised officer records the outcome.', mobile: 'Decide', owner: 'Central AICTE Desk', title: 'A decision you can trace back.', detail: 'The authorised officer records the outcome and the reasons. Documents, reviews and follow-up obligations stay connected to it.', status: 'Decision recorded', tone: 'success' as const, evidence: 'Outcome, reasons and audit history retained.', icon: Fingerprint },
 ];
@@ -31,7 +32,7 @@ const FEATURES = [
   { icon: ScanSearch, title: 'Dynamic Deficiency Matrix', benefit: 'Applications are pre-screened against handbook rules before a human ever opens them.', example: 'Sanctioned intake requires 120 computers, only 95 declared — deficiency detected automatically.', term: 'A deficiency is a gap between what the rules require and what an application declares.' },
   { icon: UsersRound, title: 'Smart EVC Routing', abbr: ['EVC', 'Expert Visit Committee'], benefit: 'Expert panels matched by specialization, with conflicts of interest excluded automatically.', example: 'Same-district and affiliated experts are filtered out, with the reason shown.', term: 'EVC = Expert Visit Committee, the panel that inspects an institution.' },
   { icon: Layers3, title: 'Concurrent Reviews with RBAC', abbr: ['RBAC', 'role-based access control'], benefit: 'Scrutiny Committee and Central Desk review different sections of the same file in parallel.', example: 'Routing waits for every review — nothing slips through a gap.', term: 'RBAC = role-based access control: each reviewer works only in their own section.' },
-  { icon: GitCompareArrows, title: 'Query & Clarification Window', benefit: 'Officers raise a query, the institution fixes it inside a 48-hour window, and only the change is re-reviewed.', example: 'Version compare shows exactly what changed — nothing else.', term: 'A query is a written question from an officer; the clarification is the institution’s answer.' },
+  { icon: GitCompareArrows, title: 'Query & Clarification Window', benefit: 'Officer queries are answered within 48 hours; deficiency corrections are due by the date on each item (typically 7 days). Only the change is re-reviewed.', example: 'Version compare shows exactly what changed — nothing else.', term: 'A query is a written question from an officer; the clarification is the institution’s answer.' },
 ];
 
 function usePrefersReducedMotion() {
@@ -80,35 +81,35 @@ function useActive(ref: React.RefObject<HTMLElement>) {
 // ---------------------------------------------------------------------------
 // Hero visual: the product's own components with synthetic data
 // ---------------------------------------------------------------------------
-const PV_STAGES: WorkflowStage[] = [
-  { id: 'pv1', version_id: 'pv', code: 'intake', name: 'Intake', kind: 'intake', sequence: 1, sla_days: null, responsible_capability: null, description: '' },
-  { id: 'pv2', version_id: 'pv', code: 'scrutiny', name: 'Scrutiny', kind: 'scrutiny', sequence: 2, sla_days: 21, responsible_capability: 'scrutiny', description: '' },
-  { id: 'pv3', version_id: 'pv', code: 'decision', name: 'Decision', kind: 'decision', sequence: 3, sla_days: 10, responsible_capability: 'decision', description: '' },
-];
-const PV_DATES = ['2026-10-12T05:00:00Z', '2026-10-13T05:00:00Z', '2026-10-27T05:00:00Z'];
-const PV_STEPS = [
-  { code: 'intake', status: 'submitted' as const, notice: { tone: 'info' as const, title: 'Documents received', text: 'The automatic handbook check runs next.' } },
-  { code: 'scrutiny', status: 'under_scrutiny' as const, notice: { tone: 'warning' as const, title: 'Deficiency found automatically', text: 'Computer capacity: 95 declared, 120 required.' } },
-  { code: 'decision', status: 'awaiting_decision' as const, notice: { tone: 'success' as const, title: 'Query resolved inside the 48-hour window', text: 'Ready for the authorised officer’s decision.' } },
-];
-const pvHistory = (step: number): StageHistory[] => PV_STAGES.slice(0, step + 1).map((s, i) => ({
-  id: `h${i}`, stage_code: s.code, stage_name: s.name, entered_at: PV_DATES[i], due_at: null, exited_at: i < step ? PV_DATES[i + 1] : null, exit_transition: null,
-}));
+/** A real seeded case as the stepper shows it: its route's stages, completed up to the current one. */
+function caseStages(c: LandingCase): WorkflowStage[] {
+  return c.stages.map((x) => ({ id: `${c.reference}-${x.code}`, version_id: c.reference, code: x.code, name: x.name, kind: x.kind, sequence: x.sequence,
+    sla_days: null, responsible_capability: null, description: '' }));
+}
+function caseHistory(c: LandingCase): StageHistory[] {
+  const order = c.stages.findIndex((x) => x.code === c.current_stage);
+  const upto = order < 0 ? c.stages.length - 1 : order;
+  return c.stages.slice(0, upto + 1).map((x, i) => ({ id: `${c.reference}-h${i}`, stage_code: x.code, stage_name: x.name, entered_at: '', due_at: null, // no dates on the public preview
+    exited_at: i < upto ? 'done' : null, exit_transition: null }));
+}
 
 /**
- * Mini dashboard card. The stepper loops through Intake → Scrutiny → Decision on its own and the card lifts and tilts toward the
- * pointer. With reduced motion it is a still picture at the Scrutiny stage.
+ * Mini dashboard card with the same seeded figures as the signed-in dashboards (from the database, not invented), stepping through
+ * real seeded demo cases. The card lifts and tilts toward the pointer. With reduced motion it stays on the first case.
  */
 function ProductPreview({ reduce }: { reduce: boolean }) {
-  const [step, setStep] = useState(1);
+  const [snap, setSnap] = useState<LandingSnapshot | null | undefined>(undefined);
+  const [step, setStep] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const card = useRef<HTMLDivElement>(null);
   const active = useActive(ref);
+  useEffect(() => { let live = true; getLandingSnapshot().then((x) => { if (live) setSnap(x); }); return () => { live = false; }; }, []);
+  const cases = snap?.cases ?? [];
   useEffect(() => {
-    if (reduce || !active) return;
-    const timer = window.setInterval(() => setStep((s) => (s + 1) % PV_STEPS.length), PREVIEW_INTERVAL);
+    if (reduce || !active || cases.length < 2) return;
+    const timer = window.setInterval(() => setStep((x) => (x + 1) % cases.length), PREVIEW_INTERVAL);
     return () => window.clearInterval(timer);
-  }, [reduce, active]);
+  }, [reduce, active, cases.length]);
   const move = (e: ReactMouseEvent<HTMLDivElement>) => {
     if (reduce || !card.current) return;
     const r = e.currentTarget.getBoundingClientRect();
@@ -118,24 +119,29 @@ function ProductPreview({ reduce }: { reduce: boolean }) {
     card.current.style.setProperty('--tilt-y', `${(x * 7).toFixed(2)}deg`);
   };
   const leave = () => { card.current?.style.setProperty('--tilt-x', '0deg'); card.current?.style.setProperty('--tilt-y', '0deg'); };
-  const s = PV_STEPS[step];
+  const c = cases[step % Math.max(cases.length, 1)];
+  const t = snap?.totals;
   return (
-    <figure className="lp-preview" ref={ref} aria-label="Preview of the AICASA dashboard: one application moving from Intake to Scrutiny to Decision, with an automatic deficiency alert">
+    <figure className="lp-preview" ref={ref} aria-label="Preview of the AICASA dashboard with the seeded demo figures, stepping through real demo applications">
       <figcaption className="lp-preview-label"><span className="lp-live-dot" aria-hidden />Live product preview — demo data</figcaption>
       <div className="lp-preview-stage" onMouseMove={move} onMouseLeave={leave}>
         <div className="lp-preview-card" ref={card} aria-hidden="true">
-          <div className="lp-preview-bar"><div><Mark /><span>AICASA <span className="lp-bar-divider">/</span> <strong>Dashboard</strong></span></div><span className="lp-reference">DEMO / 2027–0042</span></div>
+          <div className="lp-preview-bar"><div><Mark /><span>AICASA <span className="lp-bar-divider">/</span> <strong>Dashboard</strong></span></div><span className="lp-reference">{c?.reference ?? 'DEMO'}</span></div>
           <div className="lp-preview-body">
             <div className="lp-preview-stats">
-              <Stat label="Open" value={12} />
-              <Stat label="Needs action" value={step === 1 ? 4 : 3} tone="warning" />
-              <Stat label="Overdue" value={1} tone="danger" />
+              {t ? <>
+                <Stat label="Applications" value={t.applications} />
+                <Stat label="With institution" value={t.with_institution} tone="warning" />
+                <Stat label="Past target" value={t.past_target} tone="danger" />
+              </> : <><span className="lp-preview-skeleton" /><span className="lp-preview-skeleton" /><span className="lp-preview-skeleton" /></>}
             </div>
-            <div className="lp-preview-record">
-              <div className="lp-preview-record-head"><div><strong>Extension of approval 2027–28</strong><small>Demo College of Engineering · Application record</small></div><StatusBadge status={s.status} /></div>
-              <WorkflowTracker stages={PV_STAGES} transitions={[]} history={pvHistory(step)} current={s.code} status={s.status} stageDueAt={null} />
-            </div>
-            <div className="lp-preview-notice" key={step}><Notice tone={s.notice.tone} title={s.notice.title}>{s.notice.text}</Notice></div>
+            {c ? (
+              <div className="lp-preview-record">
+                <div className="lp-preview-record-head"><div><strong>{c.title}</strong><small>{c.institution} · {c.reference}</small></div><StatusBadge status={c.status} /></div>
+                <WorkflowTracker stages={caseStages(c)} transitions={[]} history={caseHistory(c)} current={c.current_stage} status={c.status} stageDueAt={null} />
+              </div>
+            ) : <div className="lp-preview-record"><p className="text-[13px] text-ink-soft">{snap === null ? 'Live demo figures are shown here when the demo database is reachable.' : 'Loading the demo figures…'}</p></div>}
+            {c?.next_action && <div className="lp-preview-notice" key={step}><Notice tone="info" title="Next action">{c.next_action}</Notice></div>}
           </div>
         </div>
       </div>
@@ -278,7 +284,6 @@ export function LandingPage() {
   const openDemo = import.meta.env.VITE_OPEN_DEMO === 'true';
   // Only shown when the project deliberately publishes demo credentials through its public environment; never hard-coded.
   const demoEmail = (import.meta.env.VITE_PUBLIC_DEMO_EMAIL as string | undefined)?.trim();
-  const demoPassword = (import.meta.env.VITE_PUBLIC_DEMO_PASSWORD as string | undefined)?.trim();
   useEffect(() => { document.title = 'AICASA · AICTE approvals, without the paper chase'; }, []);
   useEffect(() => {
     if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: reduce ? 'instant' : 'smooth', block: 'start' });
@@ -322,13 +327,13 @@ export function LandingPage() {
         <div>
           <p className="lp-eyebrow">Demo access</p><h2 id="demo-heading">Here for the demo?</h2>
           <p>This is a working SIH26262 prototype with synthetic data: pick an institution, officer or administrator workspace and follow a real application through every stage.</p>
-          {demoEmail && demoPassword && <div className="lp-copy-box"><p>Shared demo account for visitors:</p><CopyField label="Email" value={demoEmail} /><CopyField label="Password" value={demoPassword} /></div>}
+          {demoEmail && <div className="lp-copy-box"><p>Demo sign-in email:</p><CopyField label="Email" value={demoEmail} /><p>The password is shared by the project team.</p></div>}
         </div>
-        <div className="lp-demo-action"><ButtonLink to="/sign-in" className="lp-demo-button">Enter the demo workspace<ArrowRight size={18} aria-hidden /></ButtonLink><span>{openDemo ? 'Choose your demo role on the next screen.' : demoEmail && demoPassword ? 'Use the account on the left at the sign-in screen.' : 'Demo accounts are issued by the project team; you will see the sign-in screen.'}</span></div>
+        <div className="lp-demo-action"><ButtonLink to="/sign-in" className="lp-demo-button">Enter the demo workspace<ArrowRight size={18} aria-hidden /></ButtonLink><span>{openDemo ? 'Choose your demo role on the next screen.' : demoEmail ? 'Use the email on the left at the sign-in screen; your workspace follows the account.' : 'Demo accounts are issued by the project team; you will see the sign-in screen.'}</span></div>
       </div></section>
     </main>
     <footer className="lp-footer lp-container">
-      <div className="lp-footer-main"><div><Link to="/" className="lp-brand" aria-label="AICASA home"><Mark /><span>AICASA</span></Link><p>AICTE Integrated Compliance and Approval<br className="lp-desktop-break" /> System for Administration</p></div><nav aria-label="Footer navigation"><Link000 href="#how-it-works">How it works</Link000><Link000 href="#features">Features</Link000><Link000 href="/sign-in">Sign in</Link000></nav></div>
+      <div className="lp-footer-main"><div><Link to="/" className="lp-brand" aria-label="AICASA home"><Mark /><span>AICASA</span></Link><p>AICTE Integrated Compliance and Approval<br className="lp-desktop-break" /> System for Administration</p></div><nav aria-label="Footer navigation"><Link000 href="#how-it-works">How it works</Link000><Link000 href="#features">Features</Link000><Link000 href="#demo">Demo access</Link000></nav></div>
       <div className="lp-footer-meta"><p>SIH26262 student prototype · Synthetic data · Not an official AICTE service.</p><p>Link interactions by <a href="https://skiper-ui.com/v1/skiper40" target="_blank" rel="noreferrer">Skiper UI<span className="sr-only"> (opens in a new tab)</span></a></p></div>
     </footer>
   </div>;

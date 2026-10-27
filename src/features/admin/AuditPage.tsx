@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { listAudit, type AuditFilters } from '@/services/admin';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, PageHeader, Pagination, Td, Th } from '@/components/ui/Page';
+import { AuditStream } from '@/features/dashboards/AuditStream';
 import { Input, Select } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/States';
-import { fmtDateTime, humanize } from '@/lib/format';
+import { codeLabel, fmtDateTime, humanize } from '@/lib/format';
 import { auditActionLabel, auditResponsibilities } from '@/lib/responsibilities';
 
 const ACTIONS = ['application_created', 'application_submitted', 'stage_entered', 'transition', 'transition_rejected', 'decision_recorded',
@@ -21,11 +22,12 @@ export function AuditPage() {
   const [f, setF] = useState<AuditFilters>({});
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState<number | null>(null);
-  const q = useQuery({ queryKey: ['audit', f, page], queryFn: () => listAudit(f, page), placeholderData: keepPreviousData });
+  const q = useQuery({ queryKey: ['audit', f, page], queryFn: () => listAudit(f, page) });
   const set = (k: keyof AuditFilters) => (e: { target: { value: string } }) => { setPage(0); setF({ ...f, [k]: e.target.value || undefined }); };
   return (
     <div>
       <PageHeader title="Audit log" description="Append-only record of significant actions, including rejected attempts. No user, including administrators, can edit or delete entries." />
+      <div className="mb-6"><AuditStream /></div>
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-line p-4">
           <Select aria-label="Action" value={f.action ?? ''} onChange={set('action')} className="w-auto min-w-[200px]"><option value="">All actions</option>{ACTIONS.map((a) => <option key={a} value={a}>{auditActionLabel(a)}</option>)}</Select>
@@ -43,7 +45,7 @@ export function AuditPage() {
                 {q.data.rows.map((r) => (
                   <tr key={r.id} className="align-top">
                     <Td className="whitespace-nowrap text-[13px] tabular">{fmtDateTime(r.created_at)}</Td>
-                    <Td className="text-[13px]">{r.actor_kind === 'system' ? <Badge tone="neutral">System</Badge> : r.actor_name ?? 'User'}</Td>
+                    <Td className="text-[13px]">{r.actor_kind === 'system' ? <><Badge tone="neutral">System</Badge>{(r.metadata?.rule_code ?? r.metadata?.rule) ? <p className="mt-0.5 text-xs text-ink-soft">Rule: {codeLabel(String(r.metadata.rule_code ?? r.metadata.rule))}</p> : null}</> : r.actor_name ?? 'User'}</Td>
                     <Td><Badge tone={r.action.includes('rejected') ? 'danger' : r.action.includes('escalation') ? 'warning' : 'neutral'}>{auditActionLabel(r.action)}</Badge></Td>
                     <Td className="text-[13px]">{humanize(r.entity_type)}{r.application_reference && <p><Link className="text-xs text-accent hover:underline" to={`/app/applications/${r.application_id}`}>{r.application_reference}</Link></p>}{r.region_code && <p className="text-xs text-ink-soft">{r.region_code}</p>}</Td>
                     <Td className="max-w-[380px] text-[13px]">

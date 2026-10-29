@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, PageHeader, Pagination, Td, Th } from '@/components/ui/Page';
 import { AuditStream } from '@/features/dashboards/AuditStream';
+import { auditDetail, uniqueAudit } from '@/lib/auditDetail';
 import { Input, Select } from '@/components/ui/Field';
 import { Button } from '@/components/ui/Button';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/States';
@@ -42,13 +43,14 @@ export function AuditPage() {
             <DataTable>
               <thead><tr><Th>When (IST)</Th><Th>Actor</Th><Th>Action</Th><Th>Record</Th><Th>Reason / details</Th></tr></thead>
               <tbody>
-                {q.data.rows.map((r) => (
+                {uniqueAudit(q.data.rows).map((r) => (
                   <tr key={r.id} className="align-top">
                     <Td className="whitespace-nowrap text-[13px] tabular">{fmtDateTime(r.created_at)}</Td>
                     <Td className="text-[13px]">{r.actor_kind === 'system' ? <><Badge tone="neutral">System</Badge>{(r.metadata?.rule_code ?? r.metadata?.rule) ? <p className="mt-0.5 text-xs text-ink-soft">Rule: {codeLabel(String(r.metadata.rule_code ?? r.metadata.rule))}</p> : null}</> : r.actor_name ?? 'User'}</Td>
                     <Td><Badge tone={r.action.includes('rejected') ? 'danger' : r.action.includes('escalation') ? 'warning' : 'neutral'}>{auditActionLabel(r.action)}</Badge></Td>
                     <Td className="text-[13px]">{humanize(r.entity_type)}{r.application_reference && <p><Link className="text-xs text-accent hover:underline" to={`/app/applications/${r.application_id}`}>{r.application_reference}</Link></p>}{r.region_code && <p className="text-xs text-ink-soft">{r.region_code}</p>}</Td>
                     <Td className="max-w-[380px] text-[13px]">
+                      {auditDetail(r) && <p className="font-medium">{auditDetail(r)}</p>}
                       {r.reason && <p>{r.reason}</p>}
                       {auditResponsibilities(r).length > 0 && <p className="text-xs text-ink-soft">Responsibilities: {auditResponsibilities(r).join(', ')}</p>}
                       {(r.before_state != null || r.after_state != null || Object.keys(r.metadata ?? {}).length > 0) && (

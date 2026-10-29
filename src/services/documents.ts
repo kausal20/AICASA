@@ -93,6 +93,20 @@ export async function ensureDocumentPrechecks(applicationId: string, docType: st
   }
 }
 
+/**
+ * The SHA-256 of a version's stored bytes, computed in the browser from the file itself, next to the fingerprint recorded at
+ * upload (when there is one). Both are shown so the "version-controlled" claim can be checked on screen.
+ */
+export async function computeVersionFingerprint(versionId: string): Promise<{ computed: string; recorded: string | null }> {
+  const row = unwrap(await supabase.from('document_versions').select('storage_bucket, storage_path, sha256').eq('id', versionId).single()) as
+    { storage_bucket: string; storage_path: string; sha256: string | null };
+  const { data, error } = await supabase.storage.from(row.storage_bucket).download(row.storage_path);
+  if (error || !data) throw error ?? new Error('The stored file could not be read.');
+  const digest = await crypto.subtle.digest('SHA-256', await data.arrayBuffer());
+  const computed = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return { computed, recorded: row.sha256 };
+}
+
 /** Short-lived (60 s) signed URL; storage RLS decides whether it is issued. */
 export async function openDocument(path: string) {
   const { data, error } = await supabase.storage.from(DOCUMENT_BUCKET).createSignedUrl(path, 60);

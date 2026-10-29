@@ -189,6 +189,8 @@ export interface AuditRow {
   application_id: string | null; institution_id: string | null; region_code: string | null; reason: string | null;
   before_state: unknown; after_state: unknown; metadata: Record<string, unknown>; created_at: string; actor_name: string | null;
   application_reference: string | null;
+  /** Which document, stage or notices the entry is about (set by the database view) */
+  detail?: string | null;
 }
 
 export interface AnalyticsSummary {

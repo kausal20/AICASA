@@ -662,6 +662,8 @@ begin
   perform app.sync_matrix_deficiencies(x.id) from (select id from applications order by id) x;
   -- the case officers send the Nirmala rule queries to the institution (same function as the deployed demo)
   perform app.demo_send_matrix_queries();
+  -- scheduled sessions show their expert panels (same function the deployed demo uses)
+  perform app.demo_panels();
   perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
   perform set_config('request.jwt.claim.role', 'service_role', true);
   r := app.run_deadline_scan('manual');

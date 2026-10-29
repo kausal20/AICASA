@@ -352,7 +352,7 @@ function OverviewTab({ a, events, openDefs, openCount, docs, missingDocs, latest
         <SummaryTile icon={FileText} tone={missingDocs.length ? 'warning' : 'ok'} title="Documents" value={`${docs} on file`}
           body={missingDocs.length ? `Missing: ${missingDocs.join(', ')}` : 'All required documents uploaded.'} onClick={() => onTab('documents')} />
         <SummaryTile icon={CalendarCheck} tone={latestEvc?.is_overdue ? 'warning' : 'neutral'} title="Expert visit" value={latestEvc ? humanize(latestEvc.status) : 'Not on route yet'}
-          body={latestEvc ? (latestEvc.scheduled_start ? `Session ${fmtDateTime(latestEvc.scheduled_start)}` : `Schedule by ${fmtDate(latestEvc.schedule_due_at)}`) : 'Created only if the route reaches an EVC stage.'} onClick={() => onTab('evc')} />
+          body={latestEvc ? `${latestEvc.scheduled_start ? `Session ${fmtDateTime(latestEvc.scheduled_start)}` : `Schedule by ${fmtDate(latestEvc.schedule_due_at)}`}${latestEvc.panel?.length ? ` · Panel: ${latestEvc.panel.map((p) => p.full_name.replace(' (Demo)', '') + (p.is_chair ? ' (chair)' : '')).join(', ')}` : ''}` : 'Created only if the route reaches an EVC stage.'} onClick={() => onTab('evc')} />
       </div>
       <Panel title="Recent activity" action={<Button variant="link" size="sm" onClick={() => onTab('timeline')}>Full timeline</Button>}>
         <TimelineList events={events?.slice(0, 6)} loading={!events} name={name} compact />

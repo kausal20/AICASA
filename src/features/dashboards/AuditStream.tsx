@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { Terminal } from 'lucide-react';
 import { latestDocumentHashes, listAudit } from '@/services/admin';
 import type { AuditRow } from '@/types/domain';
-import { codeLabel, fmtDateTime } from '@/lib/format';
+import { fmtDateTime } from '@/lib/format';
 import { auditActionLabel } from '@/lib/responsibilities';
+import { auditDetail, uniqueAudit } from '@/lib/auditDetail';
 
 type Channel = 'SYSTEM' | 'SECURITY' | 'PIPELINE';
 
@@ -16,20 +17,10 @@ function channelOf(action: string): Channel {
 
 const WARN = /escalation|overdue|returned_for_correction|deficiency_raised|still_deficient|rejected/;
 
-/** What distinguishes two entries of the same action on the same case (for example which stage was entered). */
-function detail(r: AuditRow): string | null {
-  const after = (r.after_state ?? {}) as Record<string, unknown>;
-  const meta = (r.metadata ?? {}) as Record<string, unknown>;
-  if (r.action === 'stage_entered' && typeof after.stage === 'string') return `→ ${codeLabel(after.stage)}`;
-  if (typeof meta.rule_code === 'string') return codeLabel(meta.rule_code);
-  if (typeof meta.rule === 'string') return codeLabel(meta.rule);
-  if (typeof after.status === 'string') return `→ ${codeLabel(after.status)}`;
-  return null;
-}
 
 function line(r: AuditRow, hashes: Record<string, string>, hashed: Set<number>): string {
   const parts = [`[${fmtDateTime(r.created_at)}]`, channelOf(r.action).padEnd(8), auditActionLabel(r.action)];
-  const extra = detail(r);
+  const extra = auditDetail(r);
   if (extra) parts.push(extra);
   if (r.application_reference) parts.push(r.application_reference);
   parts.push(`by ${r.actor_kind === 'system' ? 'System' : r.actor_name ?? 'user'}`);
@@ -46,7 +37,7 @@ export function AuditStream() {
     queryKey: ['audit', 'stream'],
     queryFn: async () => {
       const { rows: raw, total } = await listAudit({}, 0, 30);
-      const rows = raw.filter((r, i) => raw.findIndex((x) => x.id === r.id) === i);
+      const rows = uniqueAudit(raw);
       const docIds = [...new Set(rows.filter((r) => /^document_(uploaded|replaced)$/.test(r.action) && r.entity_id).map((r) => r.entity_id!))];
       const hashes = await latestDocumentHashes(docIds).catch(() => ({} as Record<string, string>));
       const seen = new Set<string>();

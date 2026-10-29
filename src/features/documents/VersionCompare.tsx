@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, FileDiff, Info } from 'lucide-react';
 import { compareVersions } from '@/services/operations';
+import { computeVersionFingerprint } from '@/services/documents';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState, LoadingRows } from '@/components/ui/States';
 import { Segmented } from '@/components/ui/Workspace';
@@ -13,6 +14,20 @@ import { fmtBytes, fmtDateTime, humanize } from '@/lib/format';
  * Two versions of the same document side by side. Where the pre-check stored the extracted text of both versions the view shows a
  * line-level diff (changes only by default). Otherwise it is a metadata-only comparison and says why.
  */
+/** SHA-256 of one version's stored content (computed from the file), with the fingerprint recorded at upload when it differs or exists. */
+function Fingerprint({ versionId }: { versionId: string }) {
+  const q = useQuery({ queryKey: ['fingerprint', versionId], queryFn: () => computeVersionFingerprint(versionId), staleTime: Infinity, retry: 1 });
+  if (q.isLoading) return <p className="mt-1 text-[11px] text-ink-faint">Computing SHA-256 from the stored file…</p>;
+  if (q.error || !q.data) return <p className="mt-1 text-[11px] text-ink-faint">SHA-256 could not be computed for this version.</p>;
+  const { computed, recorded } = q.data;
+  return (
+    <p className="mt-1 break-all font-mono text-[11px] leading-snug text-ink-soft">
+      <span className="font-sans font-medium text-ink">SHA-256</span> <span data-testid="sha256">{computed}</span>
+      {recorded && <span className="ml-1 font-sans">{recorded === computed ? '· matches the fingerprint recorded at upload' : '· DIFFERS from the fingerprint recorded at upload'}</span>}
+    </p>
+  );
+}
+
 export function VersionCompare({ oldVersionId, newVersionId }: { oldVersionId: string; newVersionId: string }) {
   const q = useQuery({ queryKey: ['version-compare', oldVersionId, newVersionId], queryFn: () => compareVersions(oldVersionId, newVersionId) });
   const [view, setView] = useState<'changes' | 'full'>('changes');
@@ -32,6 +47,7 @@ export function VersionCompare({ oldVersionId, newVersionId }: { oldVersionId: s
               <p className="font-medium">Version {v.version}{i === 0 ? ' (on file when the query was raised)' : ' (submitted)'}</p>
               <p className="truncate text-xs text-ink-soft">{v.file_name} · {fmtBytes(v.size_bytes)} · {fmtDateTime(v.uploaded_at)}</p>
               {v.replaced_reason && <p className="mt-0.5 text-xs text-ink-soft">Reason: {v.replaced_reason}</p>}
+              <Fingerprint versionId={v.id} />
             </div>
           </div>
         ))}

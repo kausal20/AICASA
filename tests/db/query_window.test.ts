@@ -162,7 +162,7 @@ describe('escalation', () => {
     expect(events[0].summary).toMatch(/query window: Affidavit unreadable/);
     await t.owner(`select app.run_deadline_scan('test')`);
     expect((await t.owner(`select 1 from escalation_events e join escalation_rules r on r.id = e.rule_id where r.code = 'DEFICIENCY_WINDOW_EXPIRED' and e.entity_id = $1`, [d.id])).length).toBe(1);
-    expect((await t.owner(`select 1 from audit_logs where action = 'escalation_triggered' and after_state ->> 'rule' = 'DEFICIENCY_WINDOW_EXPIRED'`)).length).toBeGreaterThan(0);
+    expect((await t.owner(`select 1 from audit_logs where action = 'escalation_triggered' and after_state -> 'notices' @> '[{"rule": "DEFICIENCY_WINDOW_EXPIRED"}]'::jsonb`)).length).toBeGreaterThan(0);
     expect((await t.owner(`select 1 from notifications where kind = 'escalation' and title like '%query window%'`)).length).toBeGreaterThan(0);
   });
 

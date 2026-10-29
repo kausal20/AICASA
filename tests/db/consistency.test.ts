@@ -164,11 +164,14 @@ describe('fix 4 and 9: eligibility, panels and one session time', () => {
     const next = (await t.owner<{ next_action: string; s: string }>(`select a.next_action, to_char(e.scheduled_start at time zone 'Asia/Kolkata', 'DD Mon YYYY') as s
       from applications a join evc_records e on e.application_id = a.id where e.id = $1`, [e.id]))[0];
     expect(next.next_action).toContain(next.s);
-    const expert = (await t.owner<{ id: string }>(`select id from experts where code = 'DEMO-EXP-007'`))[0].id;
-    await t.owner(`insert into evc_panel_experts (evc_id, expert_id, assigned_by) select $1, $2, id from profiles where email = $3`, [e.id, expert, EVC]);
-    await t.as(EVC, `select set_evc_panel_chair($1, $2)`, [e.id, expert]);
-    const panel = (await t.as<{ panel: { full_name: string; is_chair: boolean }[] }>(EVC, `select panel from v_evc_queue where id = $1`, [e.id]))[0].panel;
-    expect(panel).toEqual([{ expert_id: expert, full_name: 'Dr. Farida Shaikh (Demo)', is_chair: true }]);
+    // the seeded session already has a panel; naming another member chair moves the chair mark
+    const members = await t.owner<{ expert_id: string }>(`select expert_id from evc_panel_experts where evc_id = $1 order by assigned_at, expert_id`, [e.id]);
+    expect(members.length).toBeGreaterThan(0);
+    const pick = members[members.length - 1].expert_id;
+    await t.as(EVC, `select set_evc_panel_chair($1, $2)`, [e.id, pick]);
+    const panel = (await t.as<{ panel: { expert_id: string; is_chair: boolean }[] }>(EVC, `select panel from v_evc_queue where id = $1`, [e.id]))[0].panel;
+    expect(panel.filter((p) => p.is_chair).map((p) => p.expert_id)).toEqual([pick]);
+    expect(panel[0].is_chair).toBe(true); // chair listed first
   });
 });
 

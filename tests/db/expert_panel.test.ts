@@ -74,7 +74,12 @@ describe('expert registry and seed', () => {
 
 describe('recommending a panel', () => {
   let s2: Evc;
-  beforeAll(async () => { s2 = await evcOf(SAHYADRI_TITLE_S2); });
+  beforeAll(async () => {
+    s2 = await evcOf(SAHYADRI_TITLE_S2);
+    // the seeded demo gives this session a panel (Farida Shaikh, Suresh Babu); these tests start from an empty one
+    expect((await t.owner(`select 1 from evc_panel_experts where evc_id = $1`, [s2.id])).length).toBe(2);
+    await t.owner(`delete from evc_panel_experts where evc_id = $1`, [s2.id]);
+  });
 
   async function inputs(who = EVC) {
     return (await t.as<{ r: { institution: MatchInstitution; programme_text: string; experts: MatchExpert[]; evc: { scheduled_start: string; scheduled_end: string } } }>(who,
@@ -119,10 +124,12 @@ describe('recommending a panel', () => {
   it('an eligible expert can be assigned and removed; panel changes need the EVC responsibility and are logged', async () => {
     const farida = await expertId('DEMO-EXP-007');
     await expectSqlError(t.as(SCRUTINY, `select assign_evc_expert($1, $2, $3)`, [s2.id, farida, s2.row_version]), /EVC responsibility/);
+    const histBefore = (await t.owner(`select 1 from evc_history where evc_id = $1 and action = 'expert_assigned'`, [s2.id])).length;
+    const eventsBefore = (await t.owner(`select 1 from application_events where application_id = $1 and event_type = 'evc_expert_assigned'`, [s2.application_id])).length;
     await t.as(EVC, `select assign_evc_expert($1, $2, $3)`, [s2.id, farida, s2.row_version]);
     await expectSqlError(t.as(EVC, `select assign_evc_expert($1, $2, $3)`, [s2.id, farida, s2.row_version]), /already on the panel/);
-    expect((await t.owner<{ action: string }>(`select action from evc_history where evc_id = $1 and action = 'expert_assigned'`, [s2.id])).length).toBe(1);
-    expect((await t.owner(`select 1 from application_events where application_id = $1 and event_type = 'evc_expert_assigned'`, [s2.application_id])).length).toBe(1);
+    expect((await t.owner(`select 1 from evc_history where evc_id = $1 and action = 'expert_assigned'`, [s2.id])).length).toBe(histBefore + 1);
+    expect((await t.owner(`select 1 from application_events where application_id = $1 and event_type = 'evc_expert_assigned'`, [s2.application_id])).length).toBe(eventsBefore + 1);
     await t.as(EVC, `select remove_evc_expert($1, $2, 'Replaced by a closer expert')`, [s2.id, farida]);
     expect((await t.owner(`select 1 from evc_panel_experts where evc_id = $1`, [s2.id])).length).toBe(0);
   });

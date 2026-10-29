@@ -167,7 +167,7 @@ alter table public.audit_logs enable trigger user;
 create or replace view public.v_audit_logs with (security_invoker = true) as
 select l.*, pd.full_name as actor_name, a.reference as application_reference,
        case l.action
-         when 'document_check_completed' then (select d.title || ' · version ' || v.version from document_check_runs r
+         when 'document_check_completed' then (select d.title || ' · version ' || v.version || ' · check ' || (select count(*) from document_check_runs r2 where r2.document_version_id = r.document_version_id and (r2.started_at, r2.id) <= (r.started_at, r.id)) from document_check_runs r
            join document_versions v on v.id = r.document_version_id join documents d on d.id = v.document_id where r.id = l.entity_id)
          when 'document_uploaded' then (l.after_state ->> 'file_name') || ' · version ' || (l.after_state ->> 'version')
          when 'document_replaced' then (l.after_state ->> 'file_name') || ' · version ' || (l.after_state ->> 'version')

@@ -51,7 +51,7 @@ describe('fix 1: every audit entry appears once', () => {
     const checks = (await audit()).filter((r) => r.action === 'document_check_completed' && r.application_id === owner.id);
     expect(checks.length).toBe(docs.length);
     expect(new Set(checks.map((c) => c.detail)).size).toBe(docs.length);
-    for (const c of checks) expect(c.detail).toMatch(/ · version \d+$/);
+    for (const c of checks) expect(c.detail).toMatch(/ · version \d+ · check \d+$/);
     const stages = (await audit()).filter((r) => r.action === 'stage_entered' && r.application_id === owner.id);
     for (const s of stages) expect(s.detail).toMatch(/^Entered /);
   });
